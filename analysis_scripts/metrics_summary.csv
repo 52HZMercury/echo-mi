@@ -1,0 +1,8 @@
+Metric,Mean,StdDev,Value (Mean ± StdDev)
+test_loss,0.4838,0.0682,0.4838 ± 0.0682
+test_accuracy,0.8500,0.0140,0.8500 ± 0.0140
+test_auroc,0.8723,0.0395,0.8723 ± 0.0395
+test_f1_score,0.8775,0.0252,0.8775 ± 0.0252
+test_precision,0.9089,0.0335,0.9089 ± 0.0335
+test_recall,0.8507,0.0519,0.8507 ± 0.0519
+test_specificity,0.8372,0.0786,0.8372 ± 0.0786

@@ -1,0 +1,59 @@
+# configs/train_faec_advanced_camus.yaml
+
+# @package _global_
+
+defaults:
+  - _self_
+  - data: camus_faec
+  # --- 核心修改: 指向新的system和model ---
+  - model: faec_advanced
+  - system: faec_advanced
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407
+experiment_name: "Experiment_6"
+test_after_training: True
+
+# --- Hydra配置 ---
+hydra:
+  run:
+    dir: outputs/${experiment_name}/Fold-${data.fold}
+
+# --- 训练器配置 ---
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 200
+  accelerator: "gpu"
+  devices: [0] # 根据您的设备修改
+  check_val_every_n_epoch: 1
+  deterministic: True
+
+# --- 日志记录器 ---
+#logger:
+#  _target_: pytorch_lightning.loggers.WandbLogger
+#  project: "CAMUS_FAEC_Advanced_Heart_Diagnosis"
+#  name: "${experiment_name}_Fold${data.fold}"
+logger:
+  _target_: pytorch_lightning.loggers.TensorBoardLogger
+  save_dir: "."
+  name: "tb_logs"
+  version: "${experiment_name}/Fold-${data.fold}"
+
+
+# --- 回调函数 ---
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    dirpath: "${hydra:run.dir}/checkpoints"
+    filename: "{epoch:02d}_{val_accuracy:.4f}"
+    monitor: "val_accuracy" # 建议监控auroc，比accuracy更稳定
+    mode: "max"
+    save_top_k: 1
+
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: "val_accuracy"
+    patience: 30
+    mode: "max"

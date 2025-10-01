@@ -1,0 +1,29 @@
+# configs/visualize_faec.yaml
+
+# @package _global_
+
+defaults:
+  - _self_
+  - data: hmc_multitask
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407
+checkpoint_path: "outputs/HMC_FAEC_Experiment_1/2025-08-18_17-58-47/checkpoints/epochepoch=03-val_aurocval_auroc=0.9372.ckpt" # <<<--- 请务必更新为您最好的模型路径
+
+# --- 训练器配置 (仅用于加载设备信息) ---
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: "gpu"
+  devices: [0]
+
+# --- 可视化配置 ---
+num_samples_to_viz: 16
+# grad_cam_target_layer_name 不再需要，可以移除或注释掉
+# grad_cam_target_layer_name: "video_encoder.model.blocks.5.norm1"
+
+# --- Wandb配置 ---
+wandb:
+  project: "FAEC_Heart_Visualize" # 这个基础名称会被脚本自动加上后缀
+  name: "Viz_${now:%Y-%m-%d_%H-%M-%S}"

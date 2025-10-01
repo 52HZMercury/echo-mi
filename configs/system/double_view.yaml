@@ -1,0 +1,8 @@
+_target_: src.systems.double_view_system.DoubleViewSystem
+model_cfg:
+  _target_: src.models.double_view_model.DoubleViewModel
+  video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+  frozen_encoder: true
+  adapter_dim: 256
+  attn_layers: 4
+learning_rate: 1e-5

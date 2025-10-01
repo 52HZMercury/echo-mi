@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - data: hmc_faec # 确保与被测试模型训练时使用的数据一致
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407
+# !!! 重要: 请务必更新为您最好的FAEC高级版模型路径 !!!
+checkpoint_path: "outputs/HMC_FAEC_Advanced_Experiment/2025-08-28/Fold-5/checkpoints/epoch=12_val_auroc=0.9177.ckpt"
+
+# --- 训练器配置 (仅用于加载设备信息) ---
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: "gpu"
+  devices: [0]
+
+# --- 可视化核心配置 ---
+# 保存可视化结果的目录
+output_dir: "visualization_outputs_cam"
+
+# 要可视化的测试集样本数量
+num_samples_to_viz: 10
+
+# --- Grad-CAM 配置 ---
+# 视频编码器中用于生成激活图的目标层。
+# 'model.norm' 是 MViT-v2-S 在输出前的最后一个归一化层，是一个很好的选择。
+target_layer_name: "model.norm"

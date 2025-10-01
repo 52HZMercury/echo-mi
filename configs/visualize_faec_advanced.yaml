@@ -1,0 +1,32 @@
+# configs/visualize_faec_advanced.yaml
+
+# @package _global_
+
+defaults:
+  - _self_
+  - data: hmc_faec # 确保与被测试模型训练时使用的数据一致
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407
+# !!! 重要: 请务必更新为您最好的高级模型路径 !!!
+checkpoint_path: "outputs/HMC_FAEC_Advanced_Experiment/2025-08-28/Fold-4/checkpoints/epoch=19_val_accuracy=0.8125.ckpt"
+
+# --- 训练器配置 (仅用于加载设备信息) ---
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: "gpu"
+  devices: [0]
+
+# --- 可视化配置 ---
+# 核心修改点: 更新注释以解释新功能
+# 设置要可视化的样本数量。
+# - 设置为正整数 (如 16)，将只处理前16个样本。
+# - 设置为 -1，将处理测试集中的所有样本。
+num_samples_to_viz: -1
+
+# --- Wandb配置 (当前脚本不使用，但保留以备将来之需) ---
+wandb:
+  project: "FAEC_Heart_Visualize"
+  name: "Viz_Advanced_Analysis_${now:%Y-%m-%d_%H-%M-%S}"

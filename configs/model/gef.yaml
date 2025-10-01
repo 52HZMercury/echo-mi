@@ -1,0 +1,16 @@
+# @package _global_
+
+_target_: src.models.gef_model.GEFModel
+
+# --- 编码器与维度配置 ---
+video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+embed_dim: 512          # 视频和文本编码器的基础输出维度
+context_dim: 1024       # 融合后上下文向量的维度
+
+# --- 流速网络配置 ---
+velocity_net_hidden_dim: 512
+velocity_net_depth: 2
+
+# --- 冻结策略 ---
+frozen_video_encoder: true
+frozen_text_encoder: true

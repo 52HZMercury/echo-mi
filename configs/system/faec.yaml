@@ -1,0 +1,13 @@
+_target_: src.systems.faec_system.FAECSystem
+model_cfg:
+  _target_: src.models.faec_model.FAECModel
+  video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+  text_encoder_path: "./model_weight/echo_prime_text_encoder.pt"
+
+# --- 训练超参数 ---
+learning_rate: 1e-5
+aux_loss_weight: 0.4 # 辅助损失的权重
+#weight_decay: 0.05  # adamw优化器需要
+
+# --- 可视化超参数 ---
+num_samples_to_viz: 1

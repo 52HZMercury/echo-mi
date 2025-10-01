@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - data: hmc_multitask # 确保与被测试模型训练时使用的数据一致
+  - system: gef        # 确保与被测试模型训练时使用的系统一致
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407
+checkpoint_path: outputs/HMC_GEF_Experiment_1/2025-08-12_09-44-07/checkpoints/epochepoch=11-val_aurocval_auroc=0.8528.ckpt
+
+# --- 训练器配置 ---
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: "gpu"
+  devices: [1]
+
+# --- 可视化配置 ---
+num_samples_to_viz: 32
+viz_ode_steps: 50
+# --- **核心修正点 1**: 路径被简化和修正 ---
+grad_cam_target_layer_name: "video_encoder.model.blocks.4"
+output_dir: "./visualization_outputs"

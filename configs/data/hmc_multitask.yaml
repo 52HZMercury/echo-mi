@@ -1,0 +1,7 @@
+_target_: src.data.hmc.HMCMultiTaskDataModule
+data_dir: "/workdir1/echo_dataset/MI-DATA/HMC-QU/pt_data/"
+#data_dir: "/workdir1/echo_dataset/MI-DATA/HMC-QU/data_ori_changename/"
+metadata_path: "data/160version.csv"
+fold: 5
+batch_size: 16
+num_workers: 16

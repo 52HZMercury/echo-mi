@@ -1,0 +1,57 @@
+# @package _global_
+
+# 默认组件配置
+defaults:
+  - _self_
+  - data: camus_multitask   # "hmc_multitask" or "camus_multitask"
+  - model: multitask
+  - system: multitask
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407
+experiment_name: "Camus_Multitask_Refactored"
+test_after_training: True
+
+# --- Hydra配置 ---
+hydra:
+  run:
+    dir: outputs/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# --- 训练器配置 ---
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 500
+  accelerator: "gpu"
+  devices: [1]
+  check_val_every_n_epoch: 1
+  deterministic: True
+
+# --- 日志记录器 ---
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  project: "CAMUS_Multitask"
+  name: "${experiment_name}"
+
+# --- 回调函数 (关键修改点) ---
+callbacks:
+  model_checkpoint:
+    # 使用我们自定义的回调
+    _target_: src.utils.callbacks.ConditionalModelCheckpoint
+    # 从 unfreeze_epoch 开始监控 (这里是80)
+    start_epoch: ${system.unfreeze_epoch}
+    dirpath: "${hydra:run.dir}/checkpoints"
+    filename: "epoch{epoch:02d}-v_mi_acc{val_mi_accuracy:.2f}"
+    monitor: "val_mi_accuracy"
+    mode: "max"
+    save_top_k: 1
+
+  early_stopping:
+    # 使用我们自定义的回调
+    _target_: src.utils.callbacks.ConditionalEarlyStopping
+    # 从 unfreeze_epoch 开始监控 (这里是80)
+    start_epoch: ${system.unfreeze_epoch}
+    monitor: "val_mi_accuracy"
+    patience: 100
+    mode: "max"

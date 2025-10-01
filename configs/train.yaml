@@ -1,0 +1,61 @@
+# @package _global_
+
+# 'defaults' 列表定义了此配置文件的基本构成部分。
+# Hydra会按照列表顺序合并这些配置，后面的配置会覆盖前面的同名配置。
+defaults:
+  - _self_                    # 表示首先加载当前文件（train.yaml）自身的配置。
+  - data: camus_multitask      # 指定“数据”部分的配置。Hydra会去'configs/data/'目录下查找'hmc_double_view.yaml'文件并加载它。
+                                # 这决定了本次训练使用的数据集和加载方式。
+  - model: multitask         # 指定“模型”部分的配置。Hydra会去'configs/model/'目录下查找'double_view.yaml'并加载。
+                                # 这决定了本次训练使用的模型架构。
+  - system: multitask        # 指定“系统”部分的配置。Hydra会去'configs/system/'目录下查找'double_view.yaml'并加载。
+                                # 这决定了使用哪个LightningModule来组织训练逻辑（损失函数、优化器等）。
+  - override hydra/job_logging: default # 覆盖Hydra默认的作业日志记录器。'default'是标准输出日志。
+  - override hydra/hydra_logging: default # 覆盖Hydra自身的日志记录器配置，同样使用标准输出。
+
+# --- 全局参数 ---
+seed: 3407                     # 全局随机种子，用于固定所有随机操作（如数据打乱、模型权重初始化），以保证实验的可复现性。
+experiment_name: "Camus_Multitask _Refactored" # 实验名称。这个名称会用在日志和输出目录中，方便区分不同的实验。
+test_after_training: True      # 一个布尔值开关。如果为True，在训练成功结束后，程序会自动使用最佳模型在测试集上运行一次评估。
+
+# --- Hydra配置 ---
+hydra:
+  run:
+    dir: outputs/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S} # 配置Hydra的输出目录。
+                                                              # `${experiment_name}`会引用上面定义的实验名。
+                                                              # `${now:...}`会使用当前的日期和时间创建一个唯一的子目录，防止不同次的运行结果互相覆盖。
+
+# --- 训练器配置 (配置 PyTorch Lightning 的 Trainer) ---
+trainer:
+  _target_: pytorch_lightning.Trainer # 指定要实例化的类是'pytorch_lightning.Trainer'。
+  max_epochs: 300                      # 训练的最大轮数。
+  accelerator: "gpu"                   # 指定使用的硬件加速器。'gpu'表示使用英伟达GPU。
+  devices: [0]                         # 指定使用的设备ID。'[0]'表示使用服务器上的第一块GPU（编号为0）。
+  check_val_every_n_epoch: 1           # 每隔多少个epoch在验证集上运行一次评估。'1'表示每个epoch结束后都进行验证。
+  deterministic: True                  # 开启确定性模式。配合全局随机种子，尽可能保证每次运行结果完全一致。
+
+# --- 日志记录器 ---
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger # 指定使用'WandbLogger'作为日志记录器。
+  project: "心脏实验-重构2"               # WandB项目（Project）的名称。所有相关的实验都会被归类到这个项目下。
+  name: "${experiment_name}"            # 本次运行在WandB上显示的名称，这里直接引用了上面定义的实验名。
+
+# --- 回调函数 (Callbacks) ---
+callbacks:
+  # 模型检查点（保存模型）的回调
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint # 指定实例化的类。
+    dirpath: "${hydra:run.dir}/checkpoints"           # 模型权重文件(.ckpt)的保存路径。这里保存在当前运行的输出目录下的'checkpoints'子目录中。
+    filename: "epoch{epoch:02d}-vacc{val_accuracy:.2f}"   # 保存的文件名格式。例如：'epoch05-vacc0.88.ckpt'。
+    monitor: "val_accuracy"                             # 监控哪个指标来决定是否保存模型。这里监控的是验证集准确率'val_acc'。
+    mode: "max"                                    # 监控指标的模式。'max'表示希望'val_acc'越大越好。
+    save_top_k: 1                                  # 只保存性能最好的k个模型。'1'表示只保留在验证集上准确率最高的那个模型。
+
+  # 早停 (Early Stopping) 的回调
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping # 指定实例化的类。
+    monitor: "val_accuracy"                             # 监控哪个指标来决定是否早停。
+    patience: 50                                   # “耐心值”。如果'val_acc'在连续50个验证轮次中都没有超过历史最高值，则提前终止训练。
+    mode: "max"                                    # 监控指标的模式，与model_checkpoint保持一致。
+
+

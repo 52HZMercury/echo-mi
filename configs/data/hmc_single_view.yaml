@@ -1,0 +1,7 @@
+_target_: src.data.hmc.HMCSingleViewDataModule
+data_dir: "/workdir1/echo_dataset/MI-DATA/HMC-QU/pt_data/"
+metadata_path: "data/160version.csv"
+fold: 1
+view: 'A2C' # or 'A4C'
+batch_size: 32
+num_workers: 0

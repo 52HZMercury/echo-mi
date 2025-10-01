@@ -1,0 +1,9 @@
+_target_: src.systems.multitask_system.MultiTaskSystem
+model_cfg:
+  _target_: src.models.multitask_model.CVFMultiTaskModel
+  video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+  frozen_encoder: true
+  adapter_dim: 256
+  attn_layers: 4
+learning_rate: 1e-5
+unfreeze_epoch: 80

@@ -1,0 +1,12 @@
+_target_: src.systems.gef_system.GEFSystem
+model_cfg:
+  _target_: src.models.gef_model.GEFModel
+  video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+
+# --- 训练超参数 ---
+learning_rate: 1e-4
+target_logit: 3.0       # 理想路径的终点信念强度
+
+# --- 可视化相关 ---
+vis_num_samples: 8      # 在Wandb上记录多少个样本的轨迹
+vis_ode_steps: 100       # 在验证时，用多少步来求解ODE并绘制轨迹

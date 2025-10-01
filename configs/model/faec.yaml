@@ -1,0 +1,16 @@
+_target_: src.models.faec_model.FAECModel
+
+# 保持与 model/faec.yaml 一致
+#video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+#text_encoder_path: "./model_weight/echo_prime_text_encoder.pt"  # <--- 补上缺失的参数
+
+frozen_video_encoder: true
+frozen_text_encoder: true
+
+embed_dim: 512
+num_layers: 6
+n_head: 8
+
+supervision_indices: [2, 4]
+
+num_knowledge_prompts: 36 # <--- 补上缺失的参数

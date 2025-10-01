@@ -1,0 +1,23 @@
+# configs/test_faec.yaml
+
+# @package _global_
+
+defaults:
+  - _self_
+  # ** 核心修正点: 默认加载FAEC方法对应的组件 **
+  - data: hmc_multitask
+  - system: faec
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407
+
+# !!! 重要: 运行测试前，请务必将下面的路径修改为您要测试的最佳模型权重 !!!
+checkpoint_path: "outputs/HMC_FAEC_Experiment_1/2025-08-20_18-14-56/checkpoints/epochepoch=02-val_aurocval_auroc=0.9098111.ckpt"
+
+# --- 训练器配置 (用于测试) ---
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: "gpu"
+  devices: [1]

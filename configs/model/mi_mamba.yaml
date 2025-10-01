@@ -1,0 +1,3 @@
+_target_: src.models.mi_mamba.yaml.MIMamba
+video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+frozen_encoder: true

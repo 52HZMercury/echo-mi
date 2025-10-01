@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - data: camus_multitask      # 指定测试时使用的数据集。**必须**和模型训练时使用的数据集配置保持一致。
+  - system: multitask          # 指定要测试的系统。**必须**和模型训练时使用的系统配置保持一致。
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407                     # 设定随机种子，确保测试时的数据加载顺序等是确定的。
+checkpoint_path: "outputs/Camus_Multitask_Refactored/2025-08-05_19-39-55/checkpoints/epochepoch=99-v_mi_accval_mi_accuracy=0.88.ckpt"
+                               # 你需要在这里指定你想要评估的模型权重文件（.ckpt）的路径。
+                               # 例如: python test.py checkpoint_path=outputs/.../best_model.ckpt
+
+# --- 训练器配置 (用于测试) ---
+trainer:
+  _target_: pytorch_lightning.Trainer # 同样实例化Trainer，但只使用其'.test()'功能。
+  accelerator: "gpu"               # 指定测试时使用的硬件。
+  devices: [0]                     # 指定测试时使用的GPU ID。

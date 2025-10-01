@@ -1,0 +1,17 @@
+# configs/model/faec_advanced.yaml
+
+_target_: src.models.faec_advanced_model.FAECAdvancedModel
+
+# 编码器路径由System配置传入，这里无需重复
+# video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+# text_encoder_path: "./model_weight/echo_prime_text_encoder.pt"
+
+#frozen_video_encoder: true
+#frozen_text_encoder: true
+#
+#embed_dim: 512
+#num_layers: 8
+#n_head: 8
+#
+## 监督层级，可以根据需要调整
+#supervision_indices: [2, 5, 7]

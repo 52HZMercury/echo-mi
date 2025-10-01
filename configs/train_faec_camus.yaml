@@ -1,0 +1,51 @@
+# @package _global_
+
+defaults:
+  - _self_
+  - data: camus_faec
+  - model: faec
+  - system: faec
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+
+# --- 全局参数 ---
+seed: 3407
+experiment_name: "CAMUS_FAEC_Experiment_4090_01"
+test_after_training: True
+
+# --- Hydra配置 ---
+hydra:
+  run:
+    dir: outputs/${experiment_name}/${now:%Y-%m-%d}/Fold-${data.fold}
+#    dir: outputs/${experiment_name}/${now:%Y-%m-%d_%H-%M-%S}
+
+# --- 训练器配置 ---
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 200
+  accelerator: "gpu"
+  devices: [0]
+  check_val_every_n_epoch: 1
+  deterministic: True
+
+# --- 日志记录器 ---
+logger:
+  _target_: pytorch_lightning.loggers.WandbLogger
+  project: "CAMUS_FAEC_Heart_Diagnosis"
+  name: "${experiment_name}"
+
+# --- 回调函数 ---
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    dirpath: "${hydra:run.dir}/checkpoints"
+    filename: "epoch{epoch:02d}-val_accuracy{val_auroc:.4f}"
+    monitor: "val_accuracy"
+    mode: "max"
+    save_top_k: 1
+
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: "val_accuracy"
+    patience: 30
+    mode: "max"

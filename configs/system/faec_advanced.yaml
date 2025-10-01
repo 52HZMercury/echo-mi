@@ -1,0 +1,27 @@
+# configs/system/faec_advanced.yaml
+
+
+_target_: src.systems.faec_advanced_system.FAECAdvancedSystem
+
+model_cfg:
+  _target_: src.models.faec_advanced_model.FAECAdvancedModel
+  video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+  text_encoder_path: "./model_weight/echo_prime_text_encoder.pt"
+
+  frozen_video_encoder: true
+  frozen_text_encoder: true
+
+  embed_dim: 512
+  num_layers: 6
+  n_head: 8
+
+  # 监督层级，可以根据需要调整
+  supervision_indices: [1,3,5]
+
+# --- 训练超参数 ---
+learning_rate: 3e-4
+supervision_loss_weight: 0.5    # 对最终“不自信”的惩罚权重
+correctness_gate_beta: 1.0      # (新) 正确性门控的敏感度参数
+
+# --- 可视化超参数 ---
+num_samples_to_viz: 1

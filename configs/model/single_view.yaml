@@ -1,0 +1,3 @@
+_target_: src.models.single_view_model.SingleViewModel
+video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+frozen_encoder: true

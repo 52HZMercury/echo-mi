@@ -1,0 +1,13 @@
+torchvision
+pytorch-lightning
+torchmetrics
+wandb
+numpy
+opencv-python-headless
+pydicom
+timm==0.6.12
+open-clip-torch
+madgrad
+PyYAML
+omegaconf
+transformers
