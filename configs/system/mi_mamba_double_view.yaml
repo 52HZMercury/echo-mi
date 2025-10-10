@@ -1,0 +1,19 @@
+_target_: src.systems.mi_mamba_double_view_system.MIMambaDoubleViewSystem
+model_cfg:
+  _target_: src.models.mi_mamba_double_view_model.MIMamba
+  in_chans: 3
+  num_classes: 2
+  depths: [2, 2, 2, 2]
+  feat_size: [16, 32, 64, 128]
+#  feat_size: [48, 96, 192, 384]
+  drop_path_rate: 0
+  layer_scale_init_value: 1e-6
+  hidden_size: 768
+  norm_name: "instance"
+  conv_block: true
+  res_block: true
+  spatial_dims: 3
+  dropout_rate: 0.5
+  adapter_dim: 256
+  attn_layers: 4
+learning_rate: 1e-5

@@ -94,6 +94,10 @@ class CAMUSDataModule(BaseDataModule):
         self.val_dataset = CAMUSDataset(self.data_dir, self.metadata_path, "test", self.fold, self.view)
         self.test_dataset = self.val_dataset
 
+class CAMUSDataModule(CAMUSDataModule):
+    def __init__(self, data_dir, metadata_path, fold, batch_size, num_workers):
+        super().__init__(data_dir, metadata_path, fold, "both", batch_size, num_workers)
+
 
 class CAMUSMultiTaskDataModule(BaseDataModule):
     def setup(self, stage=None):
