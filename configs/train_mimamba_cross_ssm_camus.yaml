@@ -4,16 +4,16 @@
 
 defaults:
   - _self_
-  - data: camus_mimamba_double_view
+  - data: camus_mimamba_cross_ssm
   # --- 核心修改: 指向新的system和model ---
-  - model: mi_mamba_double_view
-  - system: mi_mamba_double_view
+  - model: mi_mamba_cross_ssm
+  - system: mi_mamba_cross_ssm
   - override hydra/job_logging: default
   - override hydra/hydra_logging: default
 
 # --- 全局参数 ---
 seed: 3407
-experiment_name: "Experiment_31"
+experiment_name: "Experiment_39"
 test_after_training: True
 
 # --- Hydra配置 ---
@@ -26,7 +26,7 @@ trainer:
   _target_: pytorch_lightning.Trainer
   max_epochs: 200
   accelerator: "gpu"
-  devices: [1] # 根据您的设备修改
+  devices: [3] # 根据您的设备修改
   check_val_every_n_epoch: 1
   deterministic: True
 

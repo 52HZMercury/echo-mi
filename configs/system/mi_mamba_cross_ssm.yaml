@@ -1,6 +1,6 @@
-_target_: src.systems.mi_mamba_double_view_system.MIMambaDoubleViewSystem
+_target_: src.systems.mi_mamba_cross_ssm_system.MIMambaCrossSSMSystem
 model_cfg:
-  _target_: src.models.mi_mamba_double_view_model.MIMamba
+  _target_: src.models.mi_mamba_cross_ssm_model.DualMIMamba_CrossSSM
   in_chans: 3
   num_classes: 1
   depths: [2, 2, 2, 2]
@@ -10,10 +10,8 @@ model_cfg:
   layer_scale_init_value: 1e-6
   hidden_size: 768
   norm_name: "instance"
-  conv_block: true
   res_block: true
   spatial_dims: 3
   dropout_rate: 0.5
-#  adapter_dim: 256
-#  attn_layers: 4
+
 learning_rate: 1e-5

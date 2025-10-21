@@ -9,8 +9,10 @@ from mamba_ssm import Mamba
 import torch.nn.functional as F
 
 
-# from .components.adapters import ViewAdapter
-# from .components.attention import AttnFusion
+# from .components.adapters import ViewAdapter # 未使用，移除
+# from .components.attention import AttnFusion # 未使用，移除
+
+# --- 复制您提供的基础模块 ---
 
 class LayerNorm(nn.Module):
     def __init__(self, normalized_shape, eps=1e-6, data_format="channels_last"):
@@ -121,8 +123,10 @@ class GSC(nn.Module):
         return x + x_residual
 
 
+# --- MambaEncoder (从您提供的文件中复制) ---
+# 我们不会直接实例化MambaEncoder，但我们会复用它的架构逻辑
 class MambaEncoder(nn.Module):
-    def __init__(self, in_chans=1, depths=[2, 2, 2, 2], dims=[48, 96, 192, 384], mamba_params=None,
+    def __init__(self, in_chans=1, depths=[2, 2, 2, 2], dims=[48, 96, 192, 384],
                  drop_path_rate=0., layer_scale_init_value=1e-6, out_indices=[0, 1, 2, 3]):
         super().__init__()
 
@@ -146,7 +150,7 @@ class MambaEncoder(nn.Module):
             gsc = GSC(dims[i])
 
             stage = nn.Sequential(
-                *[MambaLayer(dim=dims[i], num_slices=num_slices_list[i], **mamba_params) for j in range(depths[i])]
+                *[MambaLayer(dim=dims[i], num_slices=num_slices_list[i]) for j in range(depths[i])]
             )
 
             self.stages.append(stage)
@@ -167,19 +171,48 @@ class MambaEncoder(nn.Module):
         for i in range(4):
             x = self.downsample_layers[i](x)
             x = self.gscs[i](x)
-            x = self.stages[i](x)
+            x_stage = self.stages[i](x)  # Mamba stage output
 
             if i in self.out_indices:
                 norm_layer = getattr(self, f'norm{i}')
-                x_out = norm_layer(x)
-                x_out = self.mlps[i](x_out)
+                x_out = norm_layer(x_stage)  # Norm
+                x_out = self.mlps[i](x_out)  # MLP
                 outs.append(x_out)
+
+            x = x_stage  # Pass Mamba output to next downsample layer
 
         return tuple(outs)
 
     def forward(self, x):
         x = self.forward_features(x)
         return x
+
+
+# --- 新增的融合模块 ---
+
+class DynamicGatingModule(nn.Module):
+    """
+    动态门控加权融合模块。
+    它学习一个“门”，该“门”决定如何加权融合两个特征图。
+    """
+
+    def __init__(self, dim):
+        super().__init__()
+        # 门控卷积，输入为两个特征拼接，输出为单个门控图
+        self.gate_conv = nn.Sequential(
+            nn.Conv3d(dim * 2, dim, kernel_size=1, bias=True),
+            nn.Sigmoid()
+        )
+        # 权重初始化
+        nn.init.constant_(self.gate_conv[0].bias, 0.5)
+
+    def forward(self, x1, x2):
+        # 拼接两个输入
+        x_cat = torch.cat([x1, x2], dim=1)
+        # 计算动态门控权重（gate值接近1，则x1权重高；接近0，则x2权重高）
+        gate = self.gate_conv(x_cat)
+        # 应用门控：gate * x1 + (1 - gate) * x2
+        return (gate * x1) + ((1.0 - gate) * x2)
 
 
 class CrossAttentionModule(nn.Module):
@@ -239,201 +272,149 @@ class CrossAttentionModule(nn.Module):
         return final_fused.transpose(1, 2).reshape(B, C, D, H, W)
 
 
-class MultiScaleFeatureFusion(nn.Module):
-    """
-    多尺度特征融合模块，融合浅层和深层特征
-    """
-
-    def __init__(self, shallow_dim, deep_dim, fusion_dim=None):
-        super().__init__()
-        self.shallow_dim = shallow_dim
-        self.deep_dim = deep_dim
-        self.fusion_dim = fusion_dim or deep_dim
-
-        # 浅层特征降维/升维到融合维度
-        self.shallow_proj = nn.Conv3d(shallow_dim, self.fusion_dim, 1)
-
-        # 深层特征降维/升维到融合维度
-        self.deep_proj = nn.Conv3d(deep_dim, self.fusion_dim, 1)
-
-        # 特征融合后的处理
-        self.fusion_conv = nn.Sequential(
-            nn.Conv3d(self.fusion_dim, self.fusion_dim, 3, padding=1),
-            nn.InstanceNorm3d(self.fusion_dim),
-            nn.ReLU(inplace=True),
-            nn.Conv3d(self.fusion_dim, self.fusion_dim, 3, padding=1),
-            nn.InstanceNorm3d(self.fusion_dim),
-            nn.ReLU(inplace=True)
-        )
-
-        # 注意力机制加权融合
-        self.attention_gate = nn.Sequential(
-            nn.AdaptiveAvgPool3d(1),
-            nn.Conv3d(self.fusion_dim * 2, self.fusion_dim // 4, 1),
-            nn.ReLU(inplace=True),
-            nn.Conv3d(self.fusion_dim // 4, self.fusion_dim * 2, 1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, shallow_feat, deep_feat):
-        """
-        Args:
-            shallow_feat: 浅层特征 (B, C1, D, H, W)
-            deep_feat: 深层特征 (B, C2, D, H, W)
-        Returns:
-            fused_feat: 融合后的特征 (B, fusion_dim, D, H, W)
-        """
-        # 调整特征维度
-        shallow_aligned = self.shallow_proj(shallow_feat)
-        deep_aligned = self.deep_proj(deep_feat)
-
-        # 通过注意力机制计算权重
-        combined = torch.cat([shallow_aligned, deep_aligned], dim=1)
-        attention_weights = self.attention_gate(combined)
-        weight_shallow, weight_deep = torch.chunk(attention_weights, 2, dim=1)
-
-        # 加权融合
-        fused = weight_shallow * shallow_aligned + weight_deep * deep_aligned
-
-        # 融合后处理
-        fused_feat = self.fusion_conv(fused)
-
-        return fused_feat
+# --- 确保所有基础模块 (LayerNorm, MambaLayer, GSC, MlpChannel,
+# --- DynamicGatingModule, CrossAttentionModule) 已被定义 ---
+# (这些代码与上一条回答中相同，此处不再重复)
 
 
-# class MultiScaleFeatureFusion(nn.Module):
-#     """
-#     优化的多尺度特征融合模块，减少计算量和显存占用
-#     """
-#     def __init__(self, shallow_dim, deep_dim, fusion_dim=None):
-#         super().__init__()
-#         self.shallow_dim = shallow_dim
-#         self.deep_dim = deep_dim
-#         self.fusion_dim = fusion_dim or min(shallow_dim, deep_dim)  # 使用较小的默认维度
-#
-#         # 浅层特征降维到融合维度
-#         self.shallow_proj = nn.Conv3d(shallow_dim, self.fusion_dim, 1)
-#
-#         # 深层特征降维到融合维度
-#         self.deep_proj = nn.Conv3d(deep_dim, self.fusion_dim, 1)
-#
-#         # 简化的特征融合后处理 - 只使用一个卷积层
-#         self.fusion_conv = nn.Sequential(
-#             nn.Conv3d(self.fusion_dim, self.fusion_dim, 3, padding=1),
-#             nn.InstanceNorm3d(self.fusion_dim),
-#             nn.ReLU(inplace=True)
-#         )
-#
-#         # 简化的注意力机制 - 减少中间通道数
-#         self.attention_gate = nn.Sequential(
-#             nn.AdaptiveAvgPool3d(1),
-#             nn.Conv3d(self.fusion_dim * 2, self.fusion_dim // 8, 1),  # 减少通道数
-#             nn.ReLU(inplace=True),
-#             nn.Conv3d(self.fusion_dim // 8, self.fusion_dim * 2, 1),
-#             nn.Sigmoid()
-#         )
-#
-#     def forward(self, shallow_feat, deep_feat):
-#         """
-#         Args:
-#             shallow_feat: 浅层特征 (B, C1, D, H, W)
-#             deep_feat: 深层特征 (B, C2, D, H, W)
-#         Returns:
-#             fused_feat: 融合后的特征 (B, fusion_dim, D, H, W)
-#         """
-#         # 调整特征维度
-#         shallow_aligned = self.shallow_proj(shallow_feat)
-#         deep_aligned = self.deep_proj(deep_feat)
-#
-#         # 简化的注意力机制计算权重
-#         combined = torch.cat([shallow_aligned, deep_aligned], dim=1)
-#         attention_weights = self.attention_gate(combined)
-#         weight_shallow, weight_deep = torch.chunk(attention_weights, 2, dim=1)
-#
-#         # 加权融合
-#         fused = weight_shallow * shallow_aligned + weight_deep * deep_aligned
-#
-#         # 简化的融合后处理
-#         fused_feat = self.fusion_conv(fused)
-#
-#         return fused_feat
-
-
-class MIMamba(nn.Module):
+class MIMambaHierarchical(nn.Module):
     def __init__(
             self,
-            in_chans=1,
+            in_chans=1,  # 单个视图的输入通道数
             num_classes=2,  # 二分类
             depths=[2, 2, 2, 2],
-            feat_size=[48, 96, 192, 384],
+            feat_size=[48, 96, 192, 384],  # 编码器各阶段的维度
             drop_path_rate=0,
             layer_scale_init_value=1e-6,
-            hidden_size: int = 768,
+            hidden_size: int = 768,  # 最终特征维度
             norm_name="instance",
-            conv_block: bool = True,
             res_block: bool = True,
             spatial_dims=3,
             dropout_rate=0.5
     ) -> None:
         super().__init__()
-        self.fusion_weights = nn.Parameter(torch.ones(2))
 
         self.hidden_size = hidden_size
         self.in_chans = in_chans
         self.num_classes = num_classes
         self.depths = depths
-        self.drop_path_rate = drop_path_rate
         self.feat_size = feat_size
-        self.layer_scale_init_value = layer_scale_init_value
-        self.spatial_dims = spatial_dims
 
         # ---------------------------------
         # 1. 独立编码器路径 (A2C 和 A4C)
         # ---------------------------------
         self.fused_in_chans = in_chans * 2  # 早期融合：通道拼接
 
+        # --- A2C 路径组件 ---
+        self.downsample_layers_2c = nn.ModuleList()
+        self.stages_2c = nn.ModuleList()
+        self.gscs_2c = nn.ModuleList()
+        self.mlps_2c = nn.ModuleList()
 
-        # 下采样
-        self.shallow_downsample = nn.Sequential(
-            nn.Conv3d(self.feat_size[0], self.feat_size[0], kernel_size=3, stride=8, padding=1),
-            nn.InstanceNorm3d(self.feat_size[0]),
-            nn.ReLU(inplace=True)
-        )
+        # --- A4C 路径组件 ---
+        self.downsample_layers_4c = nn.ModuleList()
+        self.stages_4c = nn.ModuleList()
+        self.gscs_4c = nn.ModuleList()
+        self.mlps_4c = nn.ModuleList()
 
-        # 添加多尺度融合模块
-        self.multiscale_fusion = MultiScaleFeatureFusion(
-            shallow_dim=self.feat_size[0],
-            deep_dim=self.feat_size[3],
-            fusion_dim=self.feat_size[3]
-        )
+        num_slices_list = [64, 32, 16, 8]  # Mamba切片数
 
+        # ==================== [核心修改点] ====================
+        # 为2C和4C路径定义不同的Mamba超参数
+
+        # origin {"d_state": 16, "d_conv": 4, "expand": 2}
         # 2C路径: 聚焦局部运动 (更小的 d_state)
         self.mamba_params_2c = {"d_state": 16, "d_conv": 4, "expand": 2}
 
-        # 4C路径: 聚焦全局协调 (更大的 d_state)  16 -> 24
+        # 4C路径: 聚焦全局协调 (更大的 d_state)
         self.mamba_params_4c = {"d_state": 16, "d_conv": 4, "expand": 2}
 
-        # 只保留必要的Encoder部分
-        self.vit_a2c = MambaEncoder(in_chans,
-                                    depths=depths,
-                                    dims=feat_size,
-                                    drop_path_rate=drop_path_rate,
-                                    layer_scale_init_value=layer_scale_init_value,
-                                    mamba_params=self.mamba_params_2c,
-                                    )
+        # ======================================================
 
-        self.vit_a4c = MambaEncoder(in_chans,
-                                    depths=depths,
-                                    dims=feat_size,
-                                    drop_path_rate=drop_path_rate,
-                                    layer_scale_init_value=layer_scale_init_value,
-                                    mamba_params=self.mamba_params_4c,
-                                    )
+        # 构建Stem（第一个下采样层）
+        stem_2c = nn.Sequential(
+            nn.Conv3d(self.fused_in_chans, feat_size[0], kernel_size=7, stride=2, padding=3),
+        )
+        self.downsample_layers_2c.append(stem_2c)
 
-        # 只需要最后一个encoder块，将特征转换为hidden_size
-        self.encoder5 = UnetrBasicBlock(
+        stem_4c = nn.Sequential(
+            nn.Conv3d(self.fused_in_chans, feat_size[0], kernel_size=7, stride=2, padding=3),
+        )
+        self.downsample_layers_4c.append(stem_4c)
+
+        # 构建后续的3个下采样层和4个Mamba阶段
+        for i in range(4):
+            # A2C
+            gsc_2c = GSC(feat_size[i])
+            # [修改] 应用2C的专用参数
+            stage_2c = nn.Sequential(
+                *[MambaLayer(
+                    dim=feat_size[i],
+                    num_slices=num_slices_list[i],
+                    **self.mamba_params_2c
+                ) for j in range(depths[i])]
+            )
+            norm_2c = nn.InstanceNorm3d(feat_size[i])
+            mlp_2c = MlpChannel(feat_size[i], 2 * feat_size[i])
+
+            self.gscs_2c.append(gsc_2c)
+            self.stages_2c.append(stage_2c)
+            self.add_module(f'norm{i}_2c', norm_2c)  # 注册norm层
+            self.mlps_2c.append(mlp_2c)
+
+            # A4C
+            gsc_4c = GSC(feat_size[i])
+            # [修改] 应用4C的专用参数
+            stage_4c = nn.Sequential(
+                *[MambaLayer(
+                    dim=feat_size[i],
+                    num_slices=num_slices_list[i],
+                    **self.mamba_params_4c
+                ) for j in range(depths[i])]
+            )
+            norm_4c = nn.InstanceNorm3d(feat_size[i])
+            mlp_4c = MlpChannel(feat_size[i], 2 * feat_size[i])
+
+            self.gscs_4c.append(gsc_4c)
+            self.stages_4c.append(stage_4c)
+            self.add_module(f'norm{i}_4c', norm_4c)  # 注册norm层
+            self.mlps_4c.append(mlp_4c)
+
+            # 添加下采样层 (除了最后一个阶段)
+            if i < 3:
+                ds_layer_2c = nn.Sequential(
+                    nn.InstanceNorm3d(feat_size[i]),
+                    nn.Conv3d(feat_size[i], feat_size[i + 1], kernel_size=2, stride=2),
+                )
+                self.downsample_layers_2c.append(ds_layer_2c)
+
+                ds_layer_4c = nn.Sequential(
+                    nn.InstanceNorm3d(feat_size[i]),
+                    nn.Conv3d(feat_size[i], feat_size[i + 1], kernel_size=2, stride=2),
+                )
+                self.downsample_layers_4c.append(ds_layer_4c)
+
+        # ---------------------------------
+        # 2. 中期融合模块 (动态门控)
+        # ---------------------------------
+        self.mid_fusion_1 = DynamicGatingModule(feat_size[1])  # 融合 96 维特征
+        self.mid_fusion_2 = DynamicGatingModule(feat_size[2])  # 融合 192 维特征
+
+        # ---------------------------------
+        # 3. 晚期融合模块 (交叉注意力)
+        # ---------------------------------
+        self.final_enc_2c = UnetrBasicBlock(
             spatial_dims=spatial_dims,
-            in_channels=self.feat_size[3],  # 输入是vit最后一层的输出通道数
+            in_channels=self.feat_size[3],
+            out_channels=self.hidden_size,
+            kernel_size=3,
+            stride=1,
+            norm_name=norm_name,
+            res_block=res_block,
+        )
+        self.final_enc_4c = UnetrBasicBlock(
+            spatial_dims=spatial_dims,
+            in_channels=self.feat_size[3],
             out_channels=self.hidden_size,
             kernel_size=3,
             stride=1,
@@ -441,83 +422,108 @@ class MIMamba(nn.Module):
             res_block=res_block,
         )
 
-        # ---------------------------------
-        # 3. 晚期融合模块 (交叉注意力)
-        # ---------------------------------
         self.late_fusion = CrossAttentionModule(dim=self.hidden_size, num_heads=8)
 
-        # 分类头
+        # ---------------------------------
+        # 4. 分类器
+        # ---------------------------------
         self.classifier = nn.Sequential(
-            # 全局平均池化
             nn.AdaptiveAvgPool3d((1, 1, 1)),
             nn.Flatten(),
-
-            # 全连接层
             nn.Linear(self.hidden_size, 512),
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate),
-
             nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate / 2),
-
-            # 输出层
-            # nn.Linear(256, num_classes)
-            nn.Linear(256, 1)
+            nn.Linear(256, 1)  # 输出1个logit，用于二分类
         )
 
     def forward(self, a2c_video, a4c_video, return_features=False):
+        # 1. 早期融合 (通道拼接)
+        x_fused_early = torch.cat([a2c_video, a4c_video], dim=1)
 
-        outs_a2c = self.vit_a2c(a2c_video)
-        outs_a4c = self.vit_a4c(a4c_video)
+        x_2c = x_fused_early
+        x_4c = x_fused_early
 
-        # shallow_feature_a2c = outs_a2c[0]  # [2, 16 ,16, 112, 112]
-        # shallow_feature_a4c = outs_a4c[0]
+        outs_2c = []
+        outs_4c = []
 
-        # 只使用最后一个特征层（最深层的语义信息）
-        deep_feature_a2c = outs_a2c[3]  # [2, 128, 2, 14, 14]
-        deep_feature_a4c = outs_a4c[3]
+        # 2. 独立编码器
+        for i in range(4):  # 4个阶段
+            # (a) 下采样
+            x_2c = self.downsample_layers_2c[i](x_2c)
+            x_4c = self.downsample_layers_4c[i](x_4c)
 
-        # # 下采样浅层特征以匹配深层特征尺寸
-        # shallow_feature_a2c_downsampled = self.shallow_downsample(shallow_feature_a2c)  # [2, 16, 2, 14, 14]
-        # shallow_feature_a4c_downsampled = self.shallow_downsample(shallow_feature_a4c)  # [2, 16, 2, 14, 14]
-        #
-        # # 多尺度特征融合
-        # fused_a2c = self.multiscale_fusion(shallow_feature_a2c_downsampled, deep_feature_a2c)
-        # fused_a4c = self.multiscale_fusion(shallow_feature_a4c_downsampled, deep_feature_a4c)
+            # (b) GSC + Mamba Stage
+            x_2c = self.gscs_2c[i](x_2c)
+            x_4c = self.gscs_4c[i](x_4c)
 
-        # 通过encoder5转换通道数
-        a2c_enc_hidden = self.encoder5(deep_feature_a2c)  # [4, 768, 2, 14, 14]
-        a4c_enc_hidden = self.encoder5(deep_feature_a4c)
+            x_stage_2c = self.stages_2c[i](x_2c)  # 使用专用的Mamba 2C
+            x_stage_4c = self.stages_4c[i](x_4c)  # 使用专用的Mamba 4C
 
-        # 注意力权重进行加权融合
-        weights = torch.softmax(self.fusion_weights, dim=0)
-        fused_features = weights[0] * a2c_enc_hidden + weights[1] * a4c_enc_hidden
+            # (c) 特征后处理 (Norm + MLP)
+            norm_layer_2c = getattr(self, f'norm{i}_2c')
+            norm_layer_4c = getattr(self, f'norm{i}_4c')
 
-        # # 交叉注意力融合
-        # fused_features = self.late_fusion(a2c_enc_hidden, a4c_enc_hidden)
+            x_out_2c = self.mlps_2c[i](norm_layer_2c(x_stage_2c))
+            x_out_4c = self.mlps_4c[i](norm_layer_4c(x_stage_4c))
 
-        # 分类头
-        logits = self.classifier(fused_features)
+            outs_2c.append(x_out_2c)
+            outs_4c.append(x_out_4c)
+
+            # (d) 中期融合 (动态门控)
+            x_2c = x_stage_2c
+            x_4c = x_stage_4c
+
+            if i == 1:
+                fused_mid_1 = self.mid_fusion_1(x_out_2c, x_out_4c)
+                x_2c = x_2c + fused_mid_1
+                x_4c = x_4c + fused_mid_1
+
+            elif i == 2:
+                fused_mid_2 = self.mid_fusion_2(x_out_2c, x_out_4c)
+                x_2c = x_2c + fused_mid_2
+                x_4c = x_4c + fused_mid_2
+
+        # 3. 晚期融合 (交叉注意力)
+        final_feat_2c = outs_2c[3]
+        final_feat_4c = outs_4c[3]
+
+        enc_2c = self.final_enc_2c(final_feat_2c)
+        enc_4c = self.final_enc_4c(final_feat_4c)
+
+        fused_late = self.late_fusion(enc_2c, enc_4c)
+
+        # 4. 分类器
+        logits = self.classifier(fused_late)
 
         if return_features:
-            return logits, fused_features
+            return logits, fused_late
         return logits
 
 
-# 使用示例
+# --- 使用示例 ---
 if __name__ == "__main__":
-    # 创建二分类模型
-    model = MIMamba(in_chans=3, num_classes=2, depths=[2, 2, 2, 2], feat_size=[16, 32, 64, 128], drop_path_rate=0.1)
-    model = model.cuda()
+    # 配置模型参数
+    model = MIMambaHierarchical(
+        in_chans=3,  # 假设输入是单通道 (e.g., 灰度视频)
+        num_classes=2,
+        depths=[2, 2, 2, 2],
+        feat_size=[48, 96, 192, 384],  # 必须与MambaEncoder的默认值匹配
+        hidden_size=768,  # 最终特征维度
+        drop_path_rate=0.1
+    )
 
-    # 测试输入
+    model = model.cuda()
+    model.eval()  # 切换到评估模式
+
     # 测试输入 (B, C, D, H, W)
-    # 假设 batch_size=2, 3通道, 32帧, 224x224 分辨率
-    a2c_input = torch.randn(2, 3, 32, 224, 224).cuda()
-    a4c_input = torch.randn(2, 3, 32, 224, 224).cuda()
+    # 假设 batch_size=2, 1通道, 32帧, 224x224 分辨率
+    a2c_input = torch.randn(16, 3, 32, 224, 224).cuda()
+    a4c_input = torch.randn(16, 3, 32, 224, 224).cuda()
 
     # 前向传播
     with torch.no_grad():

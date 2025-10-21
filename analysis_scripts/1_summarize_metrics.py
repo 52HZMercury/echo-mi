@@ -12,7 +12,7 @@ from sklearn.metrics import (
     confusion_matrix
 )
 from utils import find_results_dirs, load_all_metrics, load_all_predictions
-
+import os
 
 def summarize_metrics(base_dir: str, experiment_name: str, output_file: str):
     """
@@ -24,6 +24,11 @@ def summarize_metrics(base_dir: str, experiment_name: str, output_file: str):
     except FileNotFoundError as e:
         print(e)
         return
+
+    # 确保输出目录存在
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     # 确保所有指标列都是数值类型
     metric_cols = [col for col in metrics_df.columns if col != 'fold']
@@ -108,6 +113,11 @@ def summarize_metrics_with_ci(base_dir: str, experiment_name: str, output_file: 
         print(e)
         return
 
+    # 确保输出目录存在
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
     y_true = predictions_df['true_label'].values
     y_pred = predictions_df['predicted_label'].values
     y_scores = predictions_df['predicted_prob'].values
@@ -162,19 +172,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--base_dir",
         type=str,
-        default="/workdir3t/A-Echo/echo-mi/outpus_20250827",
+        default="/workdir2/cn24/program/echo-mi/outputs",
         help="实验输出的根目录 (通常是 'outputs')。"
     )
     parser.add_argument(
         "--experiment_name",
         type=str,
-        default="HMC_FAEC_Experiment_4090_01",
-        help="实验名称 (不包含 '_FoldX' 后缀, 例如 'HMC_FAEC_Experiment')。"
+        default="Experiment_10",
+        help="实验名称"
     )
     parser.add_argument(
         "--output_file",
         type=str,
-        default="metrics_summary.csv",
+        default="Experiment_10/metrics_summary.csv",
         help="保存摘要的CSV文件名。"
     )
     args = parser.parse_args()

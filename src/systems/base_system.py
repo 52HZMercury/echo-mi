@@ -40,6 +40,7 @@ class BaseSystem(pl.LightningModule):
         #     lr=self.learning_rate,
         #     weight_decay=self.weight_decay # 应用权重衰减
         # )
+
         return optimizer
 
     def on_validation_epoch_end(self):

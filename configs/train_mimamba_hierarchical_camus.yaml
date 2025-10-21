@@ -4,16 +4,16 @@
 
 defaults:
   - _self_
-  - data: camus_mimamba_double_view
+  - data: camus_mimamba_hierarchical
   # --- 核心修改: 指向新的system和model ---
-  - model: mi_mamba_double_view
-  - system: mi_mamba_double_view
+  - model: mi_mamba_hierarchical
+  - system: mi_mamba_hierarchical
   - override hydra/job_logging: default
   - override hydra/hydra_logging: default
 
 # --- 全局参数 ---
 seed: 3407
-experiment_name: "Experiment_31"
+experiment_name: "Experiment_30"
 test_after_training: True
 
 # --- Hydra配置 ---

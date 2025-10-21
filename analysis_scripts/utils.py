@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import glob
+from typing import List, Tuple
 
 
 # --- 顶刊级别的绘图风格配置 ---
@@ -60,7 +61,7 @@ def find_results_dirs(base_dir: str, experiment_name: str) -> list:
         list: 包含所有折数结果目录的路径列表。
     """
     # 使用通配符 * 来匹配中间的日期目录
-    search_pattern = f"{base_dir}/{experiment_name}/*/Fold-*/test_results"
+    search_pattern = f"{base_dir}/{experiment_name}/Fold-*/test_results"
     result_dirs = glob.glob(search_pattern)
     if not result_dirs:
         raise FileNotFoundError(
@@ -100,7 +101,7 @@ def load_all_metrics(results_dirs: list) -> pd.DataFrame:
     return pd.concat(all_metrics, ignore_index=True)
 
 
-def load_all_features(results_dirs: list) -> tuple[np.ndarray, np.ndarray, list]:
+def load_all_features(results_dirs: List[str]) -> Tuple[np.ndarray, np.ndarray, List[str]]:
     """
     加载所有折数的特征向量和对应的标签。
     (已更新以匹配新的目录结构)
