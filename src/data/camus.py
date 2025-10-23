@@ -11,7 +11,7 @@ from .base import BaseEchoDataset
 class CAMUSDataset(BaseEchoDataset):
     """CAMUS 数据集（支持多种帧扩展策略）"""
 
-    def __init__(self, data_dir, metadata_path, split, fold, view, expand_mode="repeat"):
+    def __init__(self, data_dir, metadata_path, split, fold, view, expand_mode="random_repeat"):
         """
         Args:
             data_dir (str): 数据目录
@@ -21,14 +21,14 @@ class CAMUSDataset(BaseEchoDataset):
             view (str): "A2C", "A4C" 或 "both"
             expand_mode (str): 帧扩展模式，可选：
                 ["repeat", "interpolate", "random_repeat", "cyclic", "reflect", "noise", "random"]
-                | 模式名               | 方法         | 特点            |
-                | `"repeat"`         | 简单帧复制    | 稳定、无噪声、简单     |
-                | `"interpolate"`    | 3D 插值      | 平滑、适合时序连续     |
-                | `"random_repeat"`  | 随机重复帧    | 数据增强，增加时间抖动   |
+                | 模式名               | 方法         | 特点                  |
+                | `"repeat"`         | 简单帧复制    | 稳定、无噪声、简单        |
+                | `"interpolate"`    | 3D 插值      | 平滑、适合时序连续        |
+                | `"random_repeat"`  | 随机重复帧    | 数据增强，增加时间抖动     |
                 | `"cyclic"`         | 循环播放填充   | 保持周期性（心脏视频推荐） |
-                | `"reflect"`        | 时间镜像扩展   | 增强首尾边界一致性     |
-                | `"noise"`          | 插值+噪声     | 保留时序同时加扰动     |
-                | `"random"`         | 随机选择一种策略 | 强数据增强方式       |
+                | `"reflect"`        | 时间镜像扩展   | 增强首尾边界一致性       |
+                | `"noise"`          | 插值+噪声     | 保留时序同时加扰动       |
+                | `"random"`         | 随机选择一种策略 | 强数据增强方式         |
 
         """
         super().__init__(data_dir, metadata_path, split, fold)

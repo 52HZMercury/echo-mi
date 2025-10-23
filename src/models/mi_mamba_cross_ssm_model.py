@@ -188,6 +188,7 @@ class MambaEncoder(nn.Module):
         self.stages = nn.ModuleList()
         self.gscs = nn.ModuleList()
         num_slices_list = [64, 32, 16, 8]
+        # num_slices_list = [32, 16, 8, 4]
         cur = 0
         for i in range(4):
             gsc = GSC(dims[i])
@@ -449,19 +450,20 @@ class CrossSSMFusion(nn.Module):
         self.norm_b = nn.LayerNorm(dim)
 
         # --- Gated mode parameters ---
-        mid = max(dim // reduction, 8)
-        self.gate_a = nn.Sequential(
-            nn.Linear(dim, mid),
-            nn.ReLU(inplace=True),
-            nn.Linear(mid, dim),
-            nn.Sigmoid(),
-        )
-        self.gate_b = nn.Sequential(
-            nn.Linear(dim, mid),
-            nn.ReLU(inplace=True),
-            nn.Linear(mid, dim),
-            nn.Sigmoid(),
-        )
+        if self.mode == "gated":
+            mid = max(dim // reduction, 8)
+            self.gate_a = nn.Sequential(
+                nn.Linear(dim, mid),
+                nn.ReLU(inplace=True),
+                nn.Linear(mid, dim),
+                nn.Sigmoid(),
+            )
+            self.gate_b = nn.Sequential(
+                nn.Linear(dim, mid),
+                nn.ReLU(inplace=True),
+                nn.Linear(mid, dim),
+                nn.Sigmoid(),
+            )
 
         # --- Attention mode parameters ---
         if self.mode == "attn":
@@ -478,6 +480,7 @@ class CrossSSMFusion(nn.Module):
         feat_a, feat_b: [B, C, D, H, W]
         returns: fused_a, fused_b
         """
+
         B, C, D, H, W = feat_a.shape
         N = D * H * W
         a_flat = feat_a.view(B, C, N).transpose(1, 2)
@@ -536,7 +539,6 @@ class DualMIMamba_CrossSSM(nn.Module):
             feat_size=[48, 96, 192, 384],
             drop_path_rate=0,
             layer_scale_init_value=1e-6,
-            fusion_stage: int = -1,  # which stage index to fuse (0..3 or -1 for last)
             fusion_kwargs: dict = None,
             hidden_size: int = 768,
             norm_name="instance",
@@ -578,7 +580,6 @@ class DualMIMamba_CrossSSM(nn.Module):
         attn_kwargs["mode"] = "attn"
         self.fusion_attn = CrossSSMFusion(dim=hidden_size, **attn_kwargs)
 
-
         # classifier (binary / regression)
         self.classifier = nn.Sequential(
             nn.AdaptiveAvgPool3d((1, 1, 1)),
@@ -596,7 +597,7 @@ class DualMIMamba_CrossSSM(nn.Module):
         # self.output_activation = nn.Sigmoid() if num_classes == 1 else nn.Softmax(dim=1)
 
     def forward(self, x_a2c: torch.Tensor, x_a4c: torch.Tensor, return_features: bool = False):
-        feats_a = self.encoder_a2c(x_a2c)  # tuple of stage outputs
+        feats_a = self.encoder_a2c(x_a2c)
         feats_b = self.encoder_a4c(x_a4c)
 
         # take last-level features
@@ -613,12 +614,6 @@ class DualMIMamba_CrossSSM(nn.Module):
         # --- Stage 2: Attention fusion ---
         a_attn, b_attn = self.fusion_attn(a_gate, b_gate)
 
-        # a_attn, b_attn = self.fusion_attn(head_a, head_b)
-        #
-        # a_gate, b_gate = self.fusion_gated(a_attn, b_attn)
-
-
-
         # 注意力权重进行加权融合
         weights = torch.softmax(self.fusion_weights, dim=0)
         fused_features = weights[0] * a_attn + weights[1] * b_attn
@@ -634,13 +629,12 @@ class DualMIMamba_CrossSSM(nn.Module):
 if __name__ == "__main__":
     B = 2
     C = 1
-    D, H, W = 32, 224, 224
+    D, H, W = 16, 224, 224
     model = DualMIMamba_CrossSSM(
         in_chans=C,
         num_classes=1,
         depths=[1, 1, 1, 1],
         feat_size=[16, 32, 64, 128],
-        fusion_stage=-1,
         fusion_kwargs=dict(d_state=8, reduction=8, mode="gated"),
         hidden_size=128,
     )

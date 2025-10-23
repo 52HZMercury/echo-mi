@@ -138,6 +138,7 @@ class MambaEncoder(nn.Module):
         self.stages = nn.ModuleList()
         self.gscs = nn.ModuleList()
         num_slices_list = [64, 32, 16, 8]
+        # num_slices_list = [32, 16, 8, 4]
         cur = 0
         for i in range(4):
             gsc = GSC(dims[i])
@@ -246,8 +247,8 @@ class MIMamba(nn.Module):
             nn.Dropout(dropout_rate / 2),
 
             # 输出层
-            # nn.Linear(256, num_classes)
-            nn.Linear(256, 1)
+            nn.Linear(256, num_classes)
+            # nn.Linear(256, 1)
         )
 
         # self.output_activation = nn.Sigmoid() if num_classes == 1 else nn.Softmax(dim=1)
@@ -276,7 +277,7 @@ class MIMamba(nn.Module):
 # 使用示例
 if __name__ == "__main__":
     # 创建二分类模型
-    model = MIMamba(in_chans=3, num_classes=2, depths=[2, 2, 2, 2], feat_size=[16, 32, 64, 128], drop_path_rate=0.1)
+    model = MIMamba(in_chans=3, num_classes=1, depths=[2, 2, 2, 2], feat_size=[16, 32, 64, 128], drop_path_rate=0.1)
     model = model.cuda()
 
     # 测试输入

@@ -5,13 +5,17 @@ model_cfg:
   num_classes: 1
   depths: [2, 2, 2, 2]
   feat_size: [16, 32, 64, 128]
+#  feat_size: [24, 48, 96, 192]
+#  feat_size: [32, 64, 128, 256]
 #  feat_size: [48, 96, 192, 384]
   drop_path_rate: 0
   layer_scale_init_value: 1e-6
-  hidden_size: 768
+  hidden_size: 256
+#  hidden_size: 768
   norm_name: "instance"
   res_block: true
   spatial_dims: 3
   dropout_rate: 0.5
 
 learning_rate: 1e-5
+loss_type: "tversky"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric

@@ -41,9 +41,11 @@ class FAECAdvancedSystem(BaseSystem):
             key = 'final' if is_final_layer else f'aux_{layer_idx}'
             logits = logits_dict[key].squeeze(-1)
             confidence = confidence_dict[key].squeeze(-1)
+
             layer_loss = self.bce_loss_no_reduction(logits, targets.float())
             weighted_bce_loss = running_unconfidence * layer_loss
             total_loss += weighted_bce_loss.mean()
+
             if previous_confidence is not None:
                 correctness_gate = torch.exp(-self.hparams.correctness_gate_beta * layer_loss.detach())
                 confidence_gain = confidence - previous_confidence.detach()

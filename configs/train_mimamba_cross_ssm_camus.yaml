@@ -13,7 +13,7 @@ defaults:
 
 # --- 全局参数 ---
 seed: 3407
-experiment_name: "Experiment_39"
+experiment_name: "Experiment_70"
 test_after_training: True
 
 # --- Hydra配置 ---
@@ -26,7 +26,7 @@ trainer:
   _target_: pytorch_lightning.Trainer
   max_epochs: 200
   accelerator: "gpu"
-  devices: [3] # 根据您的设备修改
+  devices: [2] # 根据您的设备修改
   check_val_every_n_epoch: 1
   deterministic: True
 
