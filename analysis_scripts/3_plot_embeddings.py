@@ -56,7 +56,9 @@ def plot_embeddings(base_dir: str, experiment_name: str, output_prefix: str, met
         #   - 较大值 (如 30-50): 更关注数据的全局结构，簇会更分散，但能更好地反映整体分布。如果您的簇都挤在一起，可以尝试增大它。
         # max_iter: 最大迭代次数。默认值通常足够，但如果簇没有很好地分离，可以尝试增加此值 (例如 2000 或 5000)。
         # learning_rate: 学习率。通常不需要调整，但如果点都挤成一团，可以尝试减小 (如 100-200)。
-        reducer_all = TSNE(n_components=2, perplexity=20, max_iter=2000, learning_rate=150, random_state=42)
+        # reducer_all = TSNE(n_components=2, perplexity=20, max_iter=2000, learning_rate=150, random_state=42)
+        # 修改后（适用于较新的scikit-learn版本）
+        reducer_all = TSNE(n_components=2, perplexity=20, n_iter=2000, learning_rate=150, random_state=42,init='random')
     else: # umap
         # --- UMAP 参数调整建议 ---
         # n_neighbors: 近邻数。控制局部与全局结构的平衡，类似于t-SNE的perplexity。
@@ -160,9 +162,9 @@ def plot_embeddings(base_dir: str, experiment_name: str, output_prefix: str, met
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visualize feature embeddings using t-SNE or UMAP.")
-    parser.add_argument("--base_dir", type=str, default="/workdir3t/A-Echo/echo-mi/outputs")
-    parser.add_argument("--experiment_name", type=str, default="HMC_FAEC_Experiment_4090_01")
-    parser.add_argument("--output_prefix", type=str, default="embedding_visualization")
+    parser.add_argument("--base_dir", type=str, default="/workdir2/cn24/program/echo-mi/outputs")
+    parser.add_argument("--experiment_name", type=str, default="Experiment_115")
+    parser.add_argument("--output_prefix", type=str, default="Experiment_115/embedding_visualization")
 
     args = parser.parse_args()
 

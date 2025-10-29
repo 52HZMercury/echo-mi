@@ -18,4 +18,4 @@ model_cfg:
   dropout_rate: 0.5
 
 learning_rate: 1e-5
-loss_type: "tversky"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric
+loss_type: "bce"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric

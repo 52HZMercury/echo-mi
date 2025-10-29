@@ -2,6 +2,6 @@ _target_: src.data.camus.CAMUSDoubleViewDataModule
 #_target_: src.data.camus.CAMUSMultiTaskDataModule
 data_dir: "/workdir1/echo_dataset/MI-DATA/CAMUS/pt_data/"
 metadata_path: "data/label_select160.csv"
-fold: 2
+fold: 1
 batch_size: 8
-num_workers: 16
+num_workers: 2

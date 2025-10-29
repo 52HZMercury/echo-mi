@@ -187,8 +187,8 @@ class MambaEncoder(nn.Module):
 
         self.stages = nn.ModuleList()
         self.gscs = nn.ModuleList()
-        num_slices_list = [64, 32, 16, 8]
-        # num_slices_list = [32, 16, 8, 4]
+        # num_slices_list = [64, 32, 16, 8]
+        num_slices_list = [32, 16, 8, 4]
         cur = 0
         for i in range(4):
             gsc = GSC(dims[i])
@@ -585,10 +585,12 @@ class DualMIMamba_CrossSSM(nn.Module):
             nn.AdaptiveAvgPool3d((1, 1, 1)),
             nn.Flatten(),
             nn.Linear(hidden_size, 512),
+
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate),
             nn.Linear(512, 256),
+
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate / 2),
@@ -597,26 +599,27 @@ class DualMIMamba_CrossSSM(nn.Module):
         # self.output_activation = nn.Sigmoid() if num_classes == 1 else nn.Softmax(dim=1)
 
     def forward(self, x_a2c: torch.Tensor, x_a4c: torch.Tensor, return_features: bool = False):
-        feats_a = self.encoder_a2c(x_a2c)
+        # feats_a = self.encoder_a2c(x_a2c)
         feats_b = self.encoder_a4c(x_a4c)
 
         # take last-level features
-        feat_a = feats_a[-1]
+        # feat_a = feats_a[-1]
         feat_b = feats_b[-1]
 
         # project through encoder heads
-        head_a = self.encoder_head(feat_a)
+        # head_a = self.encoder_head(feat_a)
         head_b = self.encoder_head(feat_b)
 
-        # --- Stage 1: Gated fusion ---
-        a_gate, b_gate = self.fusion_gated(head_a, head_b)
-
+        # # --- Stage 1: Gated fusion ---
+        # a_gate, b_gate = self.fusion_gated(head_a, head_b)
+        #
         # --- Stage 2: Attention fusion ---
-        a_attn, b_attn = self.fusion_attn(a_gate, b_gate)
+        # a_attn, b_attn = self.fusion_attn(head_a, head_b)
 
         # 注意力权重进行加权融合
-        weights = torch.softmax(self.fusion_weights, dim=0)
-        fused_features = weights[0] * a_attn + weights[1] * b_attn
+        # weights = torch.softmax(self.fusion_weights, dim=0)
+        # fused_features = weights[0] * head_a + weights[1] * head_b
+        fused_features = head_b
 
         logit = self.classifier(fused_features)
         # out = self.output_activation(logit)

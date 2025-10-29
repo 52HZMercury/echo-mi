@@ -1,0 +1,24 @@
+_target_: src.systems.mi_mamba_echo_prime_text_video_system.MIMambaEchoPrimeTextVideoSystem
+model_cfg:
+  _target_: src.models.mi_mamba_echo_prime_text_video_model.MIMambaEchoPrimeTextVideo
+  in_chans: 3
+  depths: [2, 2, 2, 2]
+  feat_size: [16, 32, 64, 128]
+  drop_path_rate: 0
+  layer_scale_init_value: 1e-6
+  hidden_size: 256
+  norm_name: "instance"
+  res_block: true
+  spatial_dims: 3
+
+  # encoder_cfg
+  video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+  text_encoder_path: "./model_weight/echo_prime_text_encoder.pt"
+
+  frozen_video_encoder: true
+  frozen_text_encoder: true
+
+  embed_dim: 512
+
+learning_rate: 1e-6
+loss_type: "bce"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric | asymmetric_bce

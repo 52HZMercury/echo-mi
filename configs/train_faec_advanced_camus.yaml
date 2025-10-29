@@ -13,7 +13,7 @@ defaults:
 
 # --- 全局参数 ---
 seed: 3407
-experiment_name: "Experiment_6"
+experiment_name: "Experiment_test"
 test_after_training: True
 
 # --- Hydra配置 ---
@@ -28,7 +28,7 @@ trainer:
   accelerator: "gpu"
   devices: [0] # 根据您的设备修改
   check_val_every_n_epoch: 1
-  deterministic: True
+  deterministic: False
 
 # --- 日志记录器 ---
 #logger:

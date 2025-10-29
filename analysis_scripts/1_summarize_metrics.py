@@ -178,13 +178,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--experiment_name",
         type=str,
-        default="Experiment_10",
+        default="Experiment_115",
         help="实验名称"
     )
     parser.add_argument(
         "--output_file",
         type=str,
-        default="Experiment_10/metrics_summary.csv",
+        default="Experiment_115/metrics_summary.csv",
         help="保存摘要的CSV文件名。"
     )
     args = parser.parse_args()

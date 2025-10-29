@@ -1,0 +1,5 @@
+_target_: src.models.mi_mamba_echo_prime_video_model.MIMambaEchoPrimeVideo
+#video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+#frozen_encoder: true
+#adapter_dim: 256
+#attn_layers: 4

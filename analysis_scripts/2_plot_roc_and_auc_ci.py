@@ -116,9 +116,9 @@ def plot_roc_curves(base_dir: str, experiment_name: str, output_file: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot ROC curves and calculate AUC with 95% CI.")
-    parser.add_argument("--base_dir", type=str, default="/workdir3t/A-Echo/echo-mi/outputs")
-    parser.add_argument("--experiment_name", type=str, default="HMC_FAEC_Experiment_4090_01")
-    parser.add_argument("--output_file", type=str, default="roc_curve.pdf")
+    parser.add_argument("--base_dir", type=str, default="/workdir2/cn24/program/echo-mi/outputs")
+    parser.add_argument("--experiment_name", type=str, default="Experiment_115")
+    parser.add_argument("--output_file", type=str, default="Experiment_115/roc_curve.pdf")
     args = parser.parse_args()
 
     plot_roc_curves(args.base_dir, args.experiment_name, args.output_file)
