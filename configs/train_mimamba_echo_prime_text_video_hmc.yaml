@@ -1,7 +1,5 @@
 # configs/train_faec_advanced_camus.yaml
 
-# @package _global_
-
 defaults:
   - _self_
   - data: hmc_double_view
@@ -13,7 +11,7 @@ defaults:
 
 # --- 全局参数 ---
 seed: 3407
-experiment_name: "Experiment_115"
+experiment_name: "Experiment_127"
 test_after_training: True
 
 # --- Hydra配置 ---

@@ -235,8 +235,7 @@ class KnowledgeFusion(nn.Module):
         """
         B, C, D, H, W = feat.shape
         k_proj = self.proj(knowledge_vector).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)  # [B, C, 1, 1, 1]
-        gate = self.gate(knowledge_vector).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
-        gate = gate * 0.01
+        gate = 0.01
         fused = feat + gate * k_proj
         return fused
 
@@ -356,24 +355,24 @@ class MIMambaEchoPrimeTextVideo(nn.Module):
             norm_name=norm_name,
             res_block=res_block,
         )
-        self.decoder2 = UnetrUpBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[1],
-            out_channels=self.feat_size[0],
-            kernel_size=3,
-            upsample_kernel_size=2,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
-        self.decoder1 = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.feat_size[0],
-            out_channels=self.feat_size[0],
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
+        # self.decoder2 = UnetrUpBlock(
+        #     spatial_dims=spatial_dims,
+        #     in_channels=self.feat_size[1],
+        #     out_channels=self.feat_size[0],
+        #     kernel_size=3,
+        #     upsample_kernel_size=2,
+        #     norm_name=norm_name,
+        #     res_block=res_block,
+        # )
+        # self.decoder1 = UnetrBasicBlock(
+        #     spatial_dims=spatial_dims,
+        #     in_channels=self.feat_size[0],
+        #     out_channels=self.feat_size[0],
+        #     kernel_size=3,
+        #     stride=1,
+        #     norm_name=norm_name,
+        #     res_block=res_block,
+        # )
 
         # self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=feat_size[0], out_channels=out_chans)
 

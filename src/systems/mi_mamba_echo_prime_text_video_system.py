@@ -8,18 +8,28 @@ from .base_system import BaseSystem
 class MIMambaEchoPrimeTextVideoSystem(BaseSystem):
     """双视图二分类训练系统，可配置多种损失函数"""
 
-    def __init__(self, model_cfg, learning_rate=1e-5, loss_type="bce"):
+    def __init__(
+            self,
+            model_cfg,
+            learning_rate=1e-5,
+            loss_type="bce",
+            bce_pos_weight=1.0,  # +++ 新增 +++：为加权BCE损失添加配置参数
+    ):
         """
         Args:
             model_cfg: 已由 Hydra 实例化的模型对象
             learning_rate: 学习率
             loss_type: 损失类型，可选：
-                ["bce", "focal", "dice", "bce_dice", "tversky", "asymmetric"]
+                ["bce", "focal", "dice", "bce_dice", "tversky", "asymmetric",
+                 "weighted_bce", "iou", "hinge"] # +++ 新增 +++
+            bce_pos_weight: (+++ 新增 +++) weighted_bce_loss 的正样本权重
         """
         super().__init__(learning_rate=learning_rate)
-        self.save_hyperparameters(ignore=['model_cfg'])
+        # *** 修改 ***：save_hyperparameters 会自动保存 bce_pos_weight
+        self.save_hyperparameters(ignore=["model_cfg"])
         self.model = model_cfg
         self.loss_type = loss_type.lower()
+        self.hparams.bce_pos_weight = bce_pos_weight  # 将可在此处访问
 
     # ----------------------------------------------------------------------
     # Forward
@@ -33,19 +43,21 @@ class MIMambaEchoPrimeTextVideoSystem(BaseSystem):
     def bce_loss(self, logits, targets):
         return F.binary_cross_entropy_with_logits(logits, targets)
 
-    def focal_loss(self, logits, targets, alpha=0.25, gamma=2.0, reduction='mean'):
+    def focal_loss(self, logits, targets, alpha=0.25, gamma=2.0, reduction="mean"):
         prob = torch.sigmoid(logits)
-        ce_loss = F.binary_cross_entropy_with_logits(logits, targets, reduction='none')
+        ce_loss = F.binary_cross_entropy_with_logits(
+            logits, targets, reduction="none"
+        )
         p_t = prob * targets + (1 - prob) * (1 - targets)
         focal_weight = alpha * (1 - p_t) ** gamma
         loss = focal_weight * ce_loss
-        return loss.mean() if reduction == 'mean' else loss.sum()
+        return loss.mean() if reduction == "mean" else loss.sum()
 
     def dice_loss(self, logits, targets, eps=1e-6):
         probs = torch.sigmoid(logits)
         intersection = (probs * targets).sum()
         union = probs.sum() + targets.sum()
-        dice = (2. * intersection + eps) / (union + eps)
+        dice = (2.0 * intersection + eps) / (union + eps)
         return 1 - dice
 
     def bce_dice_loss(self, logits, targets, bce_weight=0.5):
@@ -66,7 +78,37 @@ class MIMambaEchoPrimeTextVideoSystem(BaseSystem):
         probs = torch.clamp(probs, clip, 1 - clip)
         pos_loss = targets * torch.log(probs) * ((1 - probs) ** gamma_pos)
         neg_loss = (1 - targets) * torch.log(1 - probs) * (probs ** gamma_neg)
-        return - (pos_loss + neg_loss).mean()
+        return -(pos_loss + neg_loss).mean()
+
+    # +++ 新增 +++
+    def weighted_bce_loss(self, logits, targets):
+        """加权BCE损失，使用 self.hparams.bce_pos_weight"""
+        # 从hparams中获取权重，并确保它在正确的设备上
+        weight = torch.tensor(
+            [self.hparams.bce_pos_weight], device=targets.device
+        )
+        return F.binary_cross_entropy_with_logits(
+            logits, targets, pos_weight=weight
+        )
+
+    # +++ 新增 +++
+    def iou_loss(self, logits, targets, eps=1e-6):
+        """IoU (Jaccard) 损失"""
+        probs = torch.sigmoid(logits)
+        intersection = (probs * targets).sum()
+        # IoU 的分母是 Union = A + B - Intersection
+        union = probs.sum() + targets.sum() - intersection
+        iou = (intersection + eps) / (union + eps)
+        return 1 - iou
+
+    # +++ 新增 +++
+    def hinge_loss(self, logits, targets):
+        """Hinge 损失 (用于 {0, 1} 标签)"""
+        # 将 targets {0, 1} 转换为 {-1, 1}
+        targets_m1_1 = 2 * targets - 1
+        # Hinge Loss: max(0, 1 - y * logit)
+        loss = torch.relu(1 - targets_m1_1 * logits)
+        return loss.mean()
 
     # ----------------------------------------------------------------------
     # --- Unified loss selector ---
@@ -85,7 +127,17 @@ class MIMambaEchoPrimeTextVideoSystem(BaseSystem):
         elif self.loss_type == "asymmetric":
             return self.asymmetric_loss(logits, targets)
         elif self.loss_type == "asymmetric_bce":
-            return 0.5 * self.asymmetric_loss(logits, targets) + 0.5 * self.bce_loss(logits, targets)
+            return 0.5 * self.asymmetric_loss(
+                logits, targets
+            ) + 0.5 * self.bce_loss(logits, targets)
+        # +++ 新增 +++
+        elif self.loss_type == "weighted_bce":
+            return self.weighted_bce_loss(logits, targets)
+        elif self.loss_type == "iou":
+            return self.iou_loss(logits, targets)
+        elif self.loss_type == "hinge":
+            return self.hinge_loss(logits, targets)
+        # +++ 结束 +++
         else:
             raise ValueError(f"Unknown loss type: {self.loss_type}")
 
@@ -116,8 +168,8 @@ class MIMambaEchoPrimeTextVideoSystem(BaseSystem):
         self.test_metrics.update(preds, targets)
         self.log("test_loss", loss, on_step=False, on_epoch=True)
         return {
-            'sample_ids': sample_ids,
-            'targets': targets,
-            'preds': preds,
-            'features': features
+            "sample_ids": sample_ids,
+            "targets": targets,
+            "preds": preds,
+            "features": features,
         }

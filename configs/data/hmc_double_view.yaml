@@ -1,6 +1,6 @@
 _target_: src.data.hmc.HMCDoubleViewDataModule
 data_dir: "/workdir1/echo_dataset/MI-DATA/HMC-QU/pt_data/"
 metadata_path: "data/160version.csv"
-fold: 4
+fold: 1
 batch_size: 8
 num_workers: 2

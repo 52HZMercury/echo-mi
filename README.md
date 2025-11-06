@@ -44,3 +44,8 @@ mimamba_echo_prime_text_video
 ```angular2html
 nohup python train.py --config-name train_mimamba_echo_prime_text_video_camus >> output1.log 2>&1 &
 ```
+
+训练hmc数据集
+```angular2html
+nohup python train.py --config-name train_mimamba_echo_prime_text_video_hmc >> output1.log 2>&1 &
+```

@@ -21,4 +21,5 @@ model_cfg:
   embed_dim: 512
 
 learning_rate: 1e-6
-loss_type: "bce"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric | asymmetric_bce
+loss_type: "bce"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric | asymmetric_bce | weighted_bce | iou | hinge
+bce_pos_weight: 1
