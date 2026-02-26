@@ -223,7 +223,7 @@ class ClsMLP(nn.Module):
 # 改造后的 SegMamba 模型
 # ==============================================================================
 
-class MIMambaEchoPrimeVideo(nn.Module):
+class MIMamba6C(nn.Module):
     def __init__(
             self,
             in_chans=3,
@@ -238,16 +238,11 @@ class MIMambaEchoPrimeVideo(nn.Module):
             res_block: bool = True,
             spatial_dims=3,
 
-            # 新增视频编码器相关参数
-            embed_dim=512,  # EchoPrimeVideoEncoder 的输出维度
-            video_encoder_path=None,  # 预训练权重路径
-            frozen_video_encoder=True,
     ) -> None:
         super().__init__()
         self.in_chans = in_chans
         self.hidden_size = hidden_size
         self.feat_size = feat_size
-        self.embed_dim = embed_dim  # 视频特征维度
 
         self.spatial_dims = spatial_dims
         self.vit = MambaEncoder(in_chans,
@@ -258,15 +253,6 @@ class MIMambaEchoPrimeVideo(nn.Module):
                                 )
 
         # --- UNet/SegMamba 骨架块初始化 (省略部分参数，与原代码一致) ---
-        self.encoder1 = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=self.in_chans,
-            out_channels=self.feat_size[0],
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=res_block,
-        )
         self.encoder2 = UnetrBasicBlock(
             spatial_dims=spatial_dims,
             in_channels=self.feat_size[0],
@@ -335,62 +321,106 @@ class MIMambaEchoPrimeVideo(nn.Module):
 
         self.out = UnetOutBlock(spatial_dims=spatial_dims, in_channels=feat_size[0], out_channels=out_chans)
 
-        # ------------------- 改造：新增视频与分类模块 -------------------
-
-        # 1. 视频编码器 (使用提供的 EchoPrimeVideoEncoder)
-        self.video_encoder = EchoPrimeVideoEncoder(
-            pretrained_path=video_encoder_path,
-            frozen=frozen_video_encoder
-        )
-
 
         # 2. 通道对齐层
-        dec_feat_channel = self.feat_size[1] * 64
+        dec_feat_channel = self.feat_size[1] * 64 * 6
 
         # 3. 分类 MLP
-        # 输入维度: dec1_channels + video_embed_dim
+        # 输入维度: dec1_channels
         self.classification_head = ClsMLP(
-            in_dim=dec_feat_channel + embed_dim,
+            in_dim=dec_feat_channel,
             out_dim=1
         )
 
 
-    def forward(self, x_a2c: torch.Tensor, x_a4c: torch.Tensor, return_features: bool = False):
+    def forward(self, x_a2c: torch.Tensor, x_a3c: torch.Tensor, x_a4c: torch.Tensor, x_apsax: torch.Tensor, x_mvsax: torch.Tensor, x_pmsax: torch.Tensor, return_features: bool = False):
 
         # --------------------- Mamba 路径 ---------------------
-        outs = self.vit(x_a4c)  # Mamba Encoder features (x2, x3, x4, x_hidden)
-        enc1 = self.encoder1(x_a4c)  # (B, 16, D, H, W)
-        x2 = outs[0]
-        enc2 = self.encoder2(x2)  # (B, 32, D/2, H/2, W/2)
-        x3 = outs[1]
-        enc3 = self.encoder3(x3)  # (B, 64, D/4, H/4, W/4)
-        x4 = outs[2]
-        enc4 = self.encoder4(x4)  # (B, 128, D/8, H/8, W/8)
-        enc_hidden = self.encoder5(outs[3])  # (B, 256, D/16, H/16, W/16)
-        dec3 = self.decoder5(enc_hidden, enc4)  # (B, 128, D/8, H/8, W/8)
+        # 处理 A2C 切面
+        outs_a2c = self.vit(x_a2c)
+        enc2_a2c = self.encoder2(outs_a2c[0])
+        enc3_a2c = self.encoder3(outs_a2c[1])
+        enc4_a2c = self.encoder4(outs_a2c[2])
+        enc_hidden_a2c = self.encoder5(outs_a2c[3])
+        dec3_a2c = self.decoder5(enc_hidden_a2c, enc4_a2c)
+        dec2_a2c = self.decoder4(dec3_a2c, enc3_a2c)
+        dec1_a2c = self.decoder3(dec2_a2c, enc2_a2c)  # (B, 32, D/2, H/2, W/2)
 
-        # 倒数第二个 decoder 层的特征 (feat_size[2] = 64)
-        dec2 = self.decoder4(dec3, enc3)  # (B, 64, D/4, H/4, W/4)
+        # 处理 A3C 切面
+        outs_a3c = self.vit(x_a3c)
+        enc2_a3c = self.encoder2(outs_a3c[0])
+        enc3_a3c = self.encoder3(outs_a3c[1])
+        enc4_a3c = self.encoder4(outs_a3c[2])
+        enc_hidden_a3c = self.encoder5(outs_a3c[3])
+        dec3_a3c = self.decoder5(enc_hidden_a3c, enc4_a3c)
+        dec2_a3c = self.decoder4(dec3_a3c, enc3_a3c)
+        dec1_a3c = self.decoder3(dec2_a3c, enc2_a3c)  # (B, 32, D/2, H/2, W/2)
 
-        # 倒数第二个 decoder 层的特征 (feat_size[1] = 32)
-        dec1 = self.decoder3(dec2, enc2)  # (B, 32, D/2, H/2, W/2)
+        # 处理 A4C 切面
+        outs_a4c = self.vit(x_a4c)
+        enc2_a4c = self.encoder2(outs_a4c[0])
+        enc3_a4c = self.encoder3(outs_a4c[1])
+        enc4_a4c = self.encoder4(outs_a4c[2])
+        enc_hidden_a4c = self.encoder5(outs_a4c[3])
+        dec3_a4c = self.decoder5(enc_hidden_a4c, enc4_a4c)
+        dec2_a4c = self.decoder4(dec3_a4c, enc3_a4c)
+        dec1_a4c = self.decoder3(dec2_a4c, enc2_a4c)  # (B, 32, D/2, H/2, W/2)
 
-        # --------------------- echo_prime路径 ---------------------
+        # 处理 APSAX 切面
+        outs_apsax = self.vit(x_apsax)
+        enc2_apsax = self.encoder2(outs_apsax[0])
+        enc3_apsax = self.encoder3(outs_apsax[1])
+        enc4_apsax = self.encoder4(outs_apsax[2])
+        enc_hidden_apsax = self.encoder5(outs_apsax[3])
+        dec3_apsax = self.decoder5(enc_hidden_apsax, enc4_apsax)
+        dec2_apsax = self.decoder4(dec3_apsax, enc3_apsax)
+        dec1_apsax = self.decoder3(dec2_apsax, enc2_apsax)  # (B, 32, D/2, H/2, W/2)
 
-        # 1. 视频特征提取
-        # video_in: (B, C_video, T, H, W) -> video_feat: (B, 512)
-        video_feat = self.video_encoder(x_a2c)
+        # 处理 MVSAX 切面
+        outs_mvsax = self.vit(x_mvsax)
+        enc2_mvsax = self.encoder2(outs_mvsax[0])
+        enc3_mvsax = self.encoder3(outs_mvsax[1])
+        enc4_mvsax = self.encoder4(outs_mvsax[2])
+        enc_hidden_mvsax = self.encoder5(outs_mvsax[3])
+        dec3_mvsax = self.decoder5(enc_hidden_mvsax, enc4_mvsax)
+        dec2_mvsax = self.decoder4(dec3_mvsax, enc3_mvsax)
+        dec1_mvsax = self.decoder3(dec2_mvsax, enc2_mvsax)  # (B, 32, D/2, H/2, W/2)
+
+        # 处理 PMSAX 切面
+        outs_pmsax = self.vit(x_pmsax)
+        enc2_pmsax = self.encoder2(outs_pmsax[0])
+        enc3_pmsax = self.encoder3(outs_pmsax[1])
+        enc4_pmsax = self.encoder4(outs_pmsax[2])
+        enc_hidden_pmsax = self.encoder5(outs_pmsax[3])
+        dec3_pmsax = self.decoder5(enc_hidden_pmsax, enc4_pmsax)
+        dec2_pmsax = self.decoder4(dec3_pmsax, enc3_pmsax)
+        dec1_pmsax = self.decoder3(dec2_pmsax, enc2_pmsax)  # (B, 32, D/2, H/2, W/2)
 
         # 保留4x4x4的空间结构
         # dec1: (B, 32, D, H, W) -> (B, 32*4*4*4) = (B, 512)
-        dec1_pooled = F.adaptive_avg_pool3d(dec1, (4, 4, 4))
-        dec1_flat = dec1_pooled.view(dec1.size(0), -1)
+        dec1_pooled_a2c = F.adaptive_avg_pool3d(dec1_a2c, (4, 4, 4))
+        dec1_flat_a2c = dec1_pooled_a2c.view(dec1_a2c.size(0), -1)
 
-        #
+        dec1_pooled_a3c = F.adaptive_avg_pool3d(dec1_a3c, (4, 4, 4))
+        dec1_flat_a3c = dec1_pooled_a3c.view(dec1_a3c.size(0), -1)
+
+        dec1_pooled_a4c = F.adaptive_avg_pool3d(dec1_a4c, (4, 4, 4))
+        dec1_flat_a4c = dec1_pooled_a4c.view(dec1_a4c.size(0), -1)
+
+        dec1_pooled_apsax = F.adaptive_avg_pool3d(dec1_apsax, (4, 4, 4))
+        dec1_flat_apsax = dec1_pooled_apsax.view(dec1_apsax.size(0), -1)
+
+        dec1_pooled_mvsax = F.adaptive_avg_pool3d(dec1_mvsax, (4, 4, 4))
+        dec1_flat_mvsax = dec1_pooled_mvsax.view(dec1_mvsax.size(0), -1)
+
+        dec1_pooled_pmsax = F.adaptive_avg_pool3d(dec1_pmsax, (4, 4, 4))
+        dec1_flat_pmsax = dec1_pooled_pmsax.view(dec1_pmsax.size(0), -1)
+
         # --------------------- 融合与分类 ---------------------
         # 1. 特征融合（通道拼接）
-        fused_feat = torch.cat([dec1_flat, video_feat], dim=1)
-
+        fused_feat = torch.cat([dec1_flat_a2c, dec1_flat_a3c, dec1_flat_a4c, dec1_flat_apsax, dec1_flat_mvsax, dec1_flat_pmsax], dim=1)
+        # fused_feat = torch.cat([dec1_flat_a2c, dec1_flat_a3c, dec1_flat_a4c], dim=1)
+        # fused_feat = torch.cat([dec1_flat_apsax, dec1_flat_mvsax, dec1_flat_pmsax], dim=1)
 
         # 2. 送入 MLP 进行二分类
         # cls_out: (B, 1)
@@ -402,39 +432,4 @@ class MIMambaEchoPrimeVideo(nn.Module):
         # return seg_out, logits
         return logits
 
-
-if __name__ == "__main__":
-
-    # 创建模型实例
-    model = MIMambaEchoPrimeVideo(
-        in_chans=3,
-        out_chans=1,
-        depths= [2, 2, 2, 2],
-        feat_size= [16, 32, 64, 128],
-        hidden_size= 256,
-        video_embed_dim= 512,
-        video_encoder_path= '../../model_weight/echo_prime_encoder.pt',  # 在实际测试中可能需要提供预训练路径
-        frozen_video_encoder= False  # 为了测试，暂时不解冻
-     ).cuda()
-
-    # 打印模型参数数量
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total parameters: {total_params:,}")
-    print(f"Trainable parameters: {trainable_params:,}")
-
-    # 主输入 (医学图像)
-    x_in = torch.randn(2, 3, 16, 224, 224).cuda()
-
-    # 设置模型为评估模式
-    model.eval()
-
-    seg_out, cls_out = model(x_in)
-
-    # 打印输出信息
-    print(f"\nSegmentation output shape: {seg_out.shape}")
-    print(f"Classification output shape: {cls_out.shape}")
-
-    sigmoid_outputs = torch.sigmoid(cls_out)
-    print(f"Classification output (sigmoid): {sigmoid_outputs}")
 

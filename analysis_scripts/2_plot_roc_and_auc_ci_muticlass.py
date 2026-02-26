@@ -1,12 +1,9 @@
-# analysis_scripts/2_plot_roc_and_auc_ci.py
-
 import pandas as pd
 import numpy as np
 import argparse
 import matplotlib.pyplot as plt
 from sklearn.metrics import roc_curve, auc
-# --- 核心修正点 1: 移除不再使用的 'interp' 导入 ---
-# from scipy import interp
+# from scipy import interp # 这一行保持移除
 from utils import set_publication_style, find_results_dirs, load_all_predictions
 
 
@@ -16,10 +13,16 @@ def calculate_auc_ci(y_true, y_scores, n_bootstraps=1000, alpha=0.95):
     rng = np.random.RandomState(42)
     for _ in range(n_bootstraps):
         indices = rng.randint(0, len(y_true), len(y_true))
-        if len(np.unique(y_true[indices])) < 2:
+
+        # --- 核心修正点 1: 确保二元化后仍有两个类别 ---
+        y_true_boot = y_true[indices]
+        y_scores_boot = y_scores[indices]
+
+        # 必须检查唯一的标签
+        if len(np.unique(y_true_boot)) < 2:
             continue
 
-        fpr, tpr, _ = roc_curve(y_true[indices], y_scores[indices])
+        fpr, tpr, _ = roc_curve(y_true_boot, y_scores_boot)
         bootstrapped_aucs.append(auc(fpr, tpr))
 
     sorted_aucs = np.array(bootstrapped_aucs)
@@ -33,7 +36,7 @@ def calculate_auc_ci(y_true, y_scores, n_bootstraps=1000, alpha=0.95):
 
 def plot_roc_curves(base_dir: str, experiment_name: str, output_file: str):
     """
-    绘制5折交叉验证的ROC曲线，并计算AUC的95%置信区间。
+    绘制5折交叉验证的ROC曲线 (One-vs-Rest for Class 1)。
     """
     set_publication_style()
 
@@ -44,21 +47,43 @@ def plot_roc_curves(base_dir: str, experiment_name: str, output_file: str):
         print(e)
         return
 
+    # --- 核心修正点 2: 标签二元化 (Binarize Labels) ---
+    # 定义哪个类是 "正类" (Positive Class)
+    # 基于你的 predictions.csv, 概率列 P(Class 1)
+    POSITIVE_CLASS = 2
+
+    # 转换: 标签为 1 的是 1, 其他 (0 和 2) 都是 0
+    predictions_df['true_label_binary'] = predictions_df['true_label'].apply(
+        lambda x: 1 if x == POSITIVE_CLASS else 0
+    )
+
+    print(f"--- 警告: 这是一个多分类任务。---")
+    print(f"由于 'predicted_prob' 只有一列, 假设这是 P(Class {POSITIVE_CLASS})。")
+    print(f"正在绘制 'Class {POSITIVE_CLASS}' vs 'Rest' 的 OvR ROC 曲线。")
+    print("-" * 30)
+
     tprs = []
     aucs = []
     mean_fpr = np.linspace(0, 1, 100)
 
     fig, ax = plt.subplots(figsize=(6, 6))
 
-    # --- 打印AUC和置信区间 ---
-    print("--- AUC with 95% Confidence Intervals ---")
+    print("--- AUC with 95% Confidence Intervals (OvR) ---")
 
     # 1. 绘制每一折的ROC曲线
     for fold in sorted(predictions_df['fold'].unique()):
         fold_data = predictions_df[predictions_df['fold'] == fold]
-        y_true = fold_data['true_label'].values
+
+        # --- 核心修正点 3: 使用二元化标签 ---
+        y_true = fold_data['true_label_binary'].values
         y_scores = fold_data['predicted_prob'].values
 
+        # 检查这一折中是否同时包含 0 和 1
+        if len(np.unique(y_true)) < 2:
+            print(f"警告: Fold {fold} 只包含一个类别，跳过...")
+            continue
+
+        # 现在 roc_curve 可以正常工作了
         fpr, tpr, _ = roc_curve(y_true, y_scores)
         roc_auc = auc(fpr, tpr)
         aucs.append(roc_auc)
@@ -69,7 +94,7 @@ def plot_roc_curves(base_dir: str, experiment_name: str, output_file: str):
 
         ax.plot(fpr, tpr, lw=1, alpha=0.4, label=f'ROC Fold {fold} (AUC = {roc_auc:.2f})')
 
-        # --- 核心修正点 2: 使用 numpy.interp 进行插值 ---
+        # 使用 numpy.interp 进行插值
         interp_tpr = np.interp(mean_fpr, fpr, tpr)
         interp_tpr[0] = 0.0
         tprs.append(interp_tpr)
@@ -78,6 +103,10 @@ def plot_roc_curves(base_dir: str, experiment_name: str, output_file: str):
     ax.plot([0, 1], [0, 1], linestyle='--', lw=2, color='grey', alpha=0.8, label='Chance')
 
     # 3. 绘制平均ROC曲线
+    if not tprs:
+        print("错误: 没有可用的 fold 数据来绘制平均曲线。")
+        return
+
     mean_tpr = np.mean(tprs, axis=0)
     mean_tpr[-1] = 1.0
     mean_auc = auc(mean_fpr, mean_tpr)
@@ -95,18 +124,18 @@ def plot_roc_curves(base_dir: str, experiment_name: str, output_file: str):
                     label=r'$\pm$ 1 std. dev.')
 
     # --- 整体数据的AUC和置信区间 ---
-    y_true_all = predictions_df['true_label'].values
+    y_true_all = predictions_df['true_label_binary'].values
     y_scores_all = predictions_df['predicted_prob'].values
     mean_auc_all, lower_ci_all, upper_ci_all = calculate_auc_ci(y_true_all, y_scores_all)
     print("-" * 30)
-    print(f"Overall: AUC = {mean_auc_all:.4f} (95% CI: {lower_ci_all:.4f}-{upper_ci_all:.4f})")
+    print(f"Overall (OvR): AUC = {mean_auc_all:.4f} (95% CI: {lower_ci_all:.4f}-{upper_ci_all:.4f})")
     print("-" * 30)
 
     # 5. 设置图表属性
     ax.set(xlim=[-0.05, 1.05], ylim=[-0.05, 1.05],
            xlabel="False Positive Rate",
            ylabel="True Positive Rate",
-           title=f"Receiver Operating Characteristic\n({experiment_name})")
+           title=f"Receiver Operating Characteristic (Class 1 vs. Rest)\n({experiment_name})")
     ax.legend(loc="lower right")
 
     plt.savefig(output_file)
@@ -115,10 +144,10 @@ def plot_roc_curves(base_dir: str, experiment_name: str, output_file: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Plot ROC curves and calculate AUC with 95% CI.")
+    parser = argparse.ArgumentParser(description="Plot OvR ROC curves and calculate AUC with 95% CI.")
     parser.add_argument("--base_dir", type=str, default="/workdir2/cn24/program/echo-mi/outputs")
-    parser.add_argument("--experiment_name", type=str, default="Experiment_provincial_13")
-    parser.add_argument("--output_file", type=str, default="Experiment_provincial_13/roc_curve.pdf")
+    parser.add_argument("--experiment_name", type=str, default="Experiment_provincial_15")
+    parser.add_argument("--output_file", type=str, default="Experiment_provincial_15/roc_curve.pdf")
     args = parser.parse_args()
 
     plot_roc_curves(args.base_dir, args.experiment_name, args.output_file)

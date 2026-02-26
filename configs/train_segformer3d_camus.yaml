@@ -1,17 +1,19 @@
 # configs/train_faec_advanced_camus.yaml
 
+# @package _global_
+
 defaults:
   - _self_
-  - data: hmc_double_view
+  - data: camus_double_view
   # --- 核心修改: 指向新的system和model ---
-  - model: mi_mamba_echo_prime_text_video
-  - system: mi_mamba_echo_prime_text_video
+  - model: segformer3d
+  - system: segformer3d
   - override hydra/job_logging: default
   - override hydra/hydra_logging: default
 
 # --- 全局参数 ---
 seed: 3407
-experiment_name: "Experiment_153"
+experiment_name: "Experiment_137"
 test_after_training: True
 
 # --- Hydra配置 ---
@@ -24,7 +26,7 @@ trainer:
   _target_: pytorch_lightning.Trainer
   max_epochs: 200
   accelerator: "gpu"
-  devices: [0] # 根据您的设备修改
+  devices: [2] # 根据您的设备修改
   check_val_every_n_epoch: 1
   deterministic: False
 
@@ -46,14 +48,14 @@ callbacks:
     _target_: pytorch_lightning.callbacks.ModelCheckpoint
     dirpath: "${hydra:run.dir}/checkpoints"
     filename: "{epoch:02d}_{val_accuracy:.4f}"
-    monitor: "val_accuracy"
-#    monitor: "val_f1_score"
+#    monitor: "val_accuracy"
+    monitor: "val_f1_score"
     mode: "max"
     save_top_k: 1
 
   early_stopping:
     _target_: pytorch_lightning.callbacks.EarlyStopping
-    monitor: "val_accuracy"
-#    monitor: "val_f1_score"
+#    monitor: "val_accuracy"
+    monitor: "val_f1_score"
     patience: 30
     mode: "max"

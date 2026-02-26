@@ -13,6 +13,7 @@ from sklearn.metrics import (
 )
 from utils import find_results_dirs, load_all_metrics, load_all_predictions
 import os
+from functools import partial
 
 def summarize_metrics(base_dir: str, experiment_name: str, output_file: str):
     """
@@ -65,7 +66,7 @@ def summarize_metrics(base_dir: str, experiment_name: str, output_file: str):
     print(f"\n摘要已保存至: {output_file}")
 
 
-def calculate_metric_ci(y_true, y_pred, y_scores, metric_func, n_bootstraps=1000, alpha=0.95):
+def calculate_metric_ci(y_true, y_pred, y_scores, metric_func, name, n_bootstraps=1000, alpha=0.95):
     """
     使用Bootstrap方法为给定的评估指标计算95%置信区间。
     """
@@ -79,8 +80,8 @@ def calculate_metric_ci(y_true, y_pred, y_scores, metric_func, n_bootstraps=1000
         if len(np.unique(y_true[indices])) < 2:
             continue
 
-        # 根据指标类型选择使用预测标签或概率分数
-        if metric_func == roc_auc_score:
+        # 修改这里的判断
+        if "AUC" in name:
             score = metric_func(y_true[indices], y_scores[indices])
         else:
             score = metric_func(y_true[indices], y_pred[indices])
@@ -125,6 +126,7 @@ def summarize_metrics_with_ci(base_dir: str, experiment_name: str, output_file: 
     metrics_to_calculate = {
         "Accuracy": accuracy_score,
         "AUC": roc_auc_score,
+        # "AUC": partial(roc_auc_score, multi_class='ovr'),  # 或者使用 'ovo'
         "F1-Score": f1_score,
         "Precision": precision_score,
         "Recall (Sensitivity)": recall_score,
@@ -140,13 +142,14 @@ def summarize_metrics_with_ci(base_dir: str, experiment_name: str, output_file: 
 
     for name, func in metrics_to_calculate.items():
         # 计算点估计值 (在全部数据上)
-        if func == roc_auc_score:
+        if "AUC" in name:
             point_estimate = func(y_true, y_scores)
         else:
             point_estimate = func(y_true, y_pred)
 
+
         # 计算置信区间
-        lower_bound, upper_bound = calculate_metric_ci(y_true, y_pred, y_scores, func)
+        lower_bound, upper_bound = calculate_metric_ci(y_true, y_pred, y_scores, func, name)
 
         results.append({
             "Metric": name,
@@ -163,8 +166,12 @@ def summarize_metrics_with_ci(base_dir: str, experiment_name: str, output_file: 
     print("-" * 60)
 
     # 保存到CSV
-    summary_df.to_csv(output_file + "_95CI", index=False, float_format='%.4f')
-    print(f"\n详细性能指标已保存至: {output_file}")
+    output_file_95ci = output_file.replace('.csv', '_95CI.csv')
+    summary_df.to_csv(output_file_95ci, index=False, float_format='%.4f')
+    print(f"\n详细性能指标已保存至: {output_file_95ci}")
+
+
+# ... existing code ...
 
 
 if __name__ == "__main__":
@@ -178,13 +185,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--experiment_name",
         type=str,
-        default="Experiment_115",
+        default="Experiment_154",
         help="实验名称"
     )
     parser.add_argument(
         "--output_file",
         type=str,
-        default="Experiment_115/metrics_summary.csv",
+        default="Experiment_154/metrics_summary.csv",
         help="保存摘要的CSV文件名。"
     )
     args = parser.parse_args()

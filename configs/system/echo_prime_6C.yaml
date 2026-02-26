@@ -1,0 +1,16 @@
+_target_: src.systems.echo_prime_6C_system.EchoPrime6CSystem
+model_cfg:
+  _target_: src.models.echo_prime_6C_model.EchoPrime6CVideo
+  in_chans: 3
+
+  # encoder_cfg
+  video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+#  text_encoder_path: "./model_weight/echo_prime_text_encoder.pt"
+
+  frozen_video_encoder: true
+#  frozen_text_encoder: true
+
+  embed_dim: 512
+
+learning_rate: 1e-6
+loss_type: "bce"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric | asymmetric_bce | weighted_bce | iou | hinge

@@ -40,22 +40,23 @@ class BaseDataModule(pl.LightningDataModule):
     """
     PyTorch Lightning DataModule 的基类.
     """
-    def __init__(self, data_dir, metadata_path, fold, batch_size, num_workers):
+    def __init__(self, data_dir, metadata_path, fold, batch_size, num_workers, drop_last):
         super().__init__()
         self.data_dir = data_dir
         self.metadata_path = metadata_path
         self.fold = fold
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.drop_last = drop_last
 
     def setup(self, stage=None):
         raise NotImplementedError("子类必须实现 setup 方法")
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, drop_last=self.drop_last, pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, drop_last=self.drop_last, pin_memory=True)
 
     def test_dataloader(self):
-        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, pin_memory=True)
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers, drop_last=self.drop_last, pin_memory=True)

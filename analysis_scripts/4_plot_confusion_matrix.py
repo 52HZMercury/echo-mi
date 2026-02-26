@@ -82,9 +82,9 @@ def plot_all_confusion_matrices(base_dir: str, experiment_name: str, output_pref
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot confusion matrix for 5-fold cross-validation.")
-    parser.add_argument("--base_dir", type=str, default="/workdir3t/A-Echo/echo-mi/outputs")
-    parser.add_argument("--experiment_name", type=str, default="HMC_FAEC_Experiment_4090_01")
-    parser.add_argument("--output_prefix", type=str, default="confusion_matrix.pdf")
+    parser.add_argument("--base_dir", type=str, default="/workdir2/cn24/program/echo-mi/outputs")
+    parser.add_argument("--experiment_name", type=str, default="Experiment_provincial_17")
+    parser.add_argument("--output_prefix", type=str, default="Experiment_provincial_17/confusion_matrix.pdf")
     args = parser.parse_args()
 
     plot_all_confusion_matrices(args.base_dir, args.experiment_name, args.output_prefix)

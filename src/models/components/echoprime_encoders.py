@@ -42,10 +42,13 @@ class EchoPrimeTextEncoder(pl.LightningModule):
     def __init__(self, pretrained_path, frozen=True):
         super().__init__()
 
-        config = transformers.AutoConfig.from_pretrained("microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract")
-        # config = transformers.AutoConfig.from_dict(config_dict)
+        # config = transformers.AutoConfig.from_pretrained("microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract")
+        # 将字符串 ID 替换为本地文件夹路径
+        local_model_path = "./model_weight/biomedbert_base/"
+        # 从本地加载配置
+        config = transformers.AutoConfig.from_pretrained(local_model_path)
 
-        # ** 核心修正点 1: 创建与权重文件匹配的MLM模型架构 **
+        # 创建与权重文件匹配的MLM模型架构 **
         # 我们先创建一个完整的AutoModelForMaskedLM，因为它包含了权重文件中所有的键
         temp_model = transformers.AutoModelForMaskedLM.from_config(config)
 
@@ -78,14 +81,12 @@ class EchoPrimeTextEncoder(pl.LightningModule):
         # temp_model.bert 就是我们需要的、包含了正确权重的 "编码器 + 池化头"
         self.backbone = temp_model.bert
 
-        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract"
-        )
+        # self.tokenizer = transformers.AutoTokenizer.from_pretrained(
+        #     "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract"
+        # )
 
-        # tokenizer_config_dict = {
-        #     "do_lower_case": "true"
-        # }
-        # self.tokenizer = transformers.AutoTokenizer.from_dict(tokenizer_config_dict)
+        # 从本地加载分词器
+        self.tokenizer = transformers.AutoTokenizer.from_pretrained(local_model_path)
 
 
 

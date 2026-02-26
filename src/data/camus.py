@@ -71,8 +71,8 @@ class CAMUSMultiTaskDataset(BaseEchoDataset):
 
 
 class CAMUSDataModule(BaseDataModule):
-    def __init__(self, data_dir, metadata_path, fold, view, batch_size, num_workers):
-        super().__init__(data_dir, metadata_path, fold, batch_size, num_workers)
+    def __init__(self, data_dir, metadata_path, fold, view, batch_size, num_workers, drop_last=False):
+        super().__init__(data_dir, metadata_path, fold, batch_size, num_workers, drop_last)
         self.view = view
 
     def setup(self, stage=None):

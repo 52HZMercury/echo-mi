@@ -1,0 +1,15 @@
+_target_: src.systems.ukan3d_system.UKan3DSystem
+
+model_cfg:
+  # 注意：这里 Target 指向我们新定义的 LKMClassification 类
+  _target_: src.models.ukan3d.UKAN3DClassification
+
+  # === 基础参数 ===
+  in_channels: 3
+  num_classes: 1  # 1 用于二分类 (输出 logit)， >1 用于多分类
+
+
+
+learning_rate: 1e-6
+loss_type: "bce"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric | asymmetric_bce | weighted_bce | iou | hinge
+bce_pos_weight: 1

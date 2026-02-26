@@ -2,16 +2,16 @@
 
 defaults:
   - _self_
-  - data: hmc_double_view
+  - data: provincial_hospital_6C_view_3
   # --- 核心修改: 指向新的system和model ---
-  - model: mi_mamba_echo_prime_text_video
-  - system: mi_mamba_echo_prime_text_video
+  - model: mi_mamba_6C_3
+  - system: mi_mamba_6C_3
   - override hydra/job_logging: default
   - override hydra/hydra_logging: default
 
 # --- 全局参数 ---
 seed: 3407
-experiment_name: "Experiment_153"
+experiment_name: "Experiment_provincial_17"
 test_after_training: True
 
 # --- Hydra配置 ---
@@ -24,7 +24,7 @@ trainer:
   _target_: pytorch_lightning.Trainer
   max_epochs: 200
   accelerator: "gpu"
-  devices: [0] # 根据您的设备修改
+  devices: [2] # 根据您的设备修改
   check_val_every_n_epoch: 1
   deterministic: False
 

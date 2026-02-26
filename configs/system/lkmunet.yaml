@@ -1,0 +1,68 @@
+_target_: src.systems.lkmunet_system.LKMUnetSystem
+
+model_cfg:
+  # 注意：这里 Target 指向我们新定义的 LKMClassification 类
+  _target_: src.models.lkm_unet.LKMClassification
+
+  # === 基础参数 ===
+  input_channels: 3
+  num_classes: 1  # 1 用于二分类 (输出 logit)， >1 用于多分类
+
+  # === 架构核心参数 (模拟 nnU-Net/PlansManager 的配置) ===
+  # 阶段数 (Depth of the network)
+  n_stages: 4
+
+  # 每个阶段的特征图通道数 [32, 64, 128, 256]
+  features_per_stage: [32, 64, 128, 256]
+
+  # 卷积核大小 (根据维度调整，这里示例为 3D)
+  # 对应 n_stages 的长度
+  kernel_sizes:
+    - [3, 3, 3]
+    - [3, 3, 3]
+    - [3, 3, 3]
+    - [3, 3, 3]
+
+  # 步长/池化操作 (通常第一层是 1，后面是 2)
+  strides:
+    - [1, 1, 1]
+    - [2, 2, 2]
+    - [2, 2, 2]
+    - [2, 2, 2]
+
+  # 每个阶段的卷积块数量
+  n_conv_per_stage: [2, 2, 2, 2]
+
+  # === 模块定义 (Hydra 实例化对象需要完整的 import 路径) ===
+  # 这是一个 trick：Hydra 配置文件中很难直接传递 python class type (如 nn.Conv3d)。
+  # 通常的做法是：
+  # 1. 在 System 代码中处理字符串 'Conv3d' -> nn.Conv3d
+  # 2. 或者使用 hydra.utils.get_class
+  # 假设你的 System 或 Model __init__ 能处理这些默认值，或者使用以下部分实例化：
+
+  conv_op:
+    _target_: hydra.utils.get_class
+    path: torch.nn.Conv3d
+
+  norm_op:
+    _target_: hydra.utils.get_class
+    path: torch.nn.InstanceNorm3d
+
+  norm_op_kwargs:
+    eps: 1e-5
+    affine: true
+
+  nonlin:
+    _target_: hydra.utils.get_class
+    path: torch.nn.LeakyReLU
+
+  nonlin_kwargs:
+    inplace: true
+
+  # === 其他参数 ===
+  conv_bias: true
+  stem_channels: null # 默认为第一阶段特征数
+
+learning_rate: 1e-6
+loss_type: "bce"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric | asymmetric_bce | weighted_bce | iou | hinge
+bce_pos_weight: 1

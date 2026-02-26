@@ -14,43 +14,6 @@ class HMCDataset(BaseEchoDataset):
 
         super().__init__(data_dir, metadata_path, split, fold)
         self.view = view
-        # 定义数据增强变换
-        self.transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=10),
-        ]) if split == "train" else None
-
-    def augment_video(self, video_tensor):
-        """对视频张量进行数据增强"""
-        if self.transform is None:
-            return video_tensor
-
-        c, t, h, w = video_tensor.shape
-
-        # 对每一帧应用空间增强
-        augmented_frames = []
-        for i in range(t):
-            frame = video_tensor[:, i, :, :]  # [3, 224, 224]
-            # 添加通道维度以便使用transforms
-            frame = frame.unsqueeze(0)  # [1, 3, 224, 224]
-            augmented_frame = self.transform(frame)
-            augmented_frames.append(augmented_frame.squeeze(0))  # [3, 224, 224]
-
-        # 重新组合为视频张量
-        augmented_video = torch.stack(augmented_frames, dim=1)  # [3, 16, 224, 224]
-
-        # 时间维度增强：保持帧数一致
-        if random.random() > 0.5 and t >= 16:
-            # 使用固定的帧数采样策略，确保输出始终是16帧
-            indices = sorted(random.sample(range(t), k=16))
-            augmented_video = augmented_video[:, indices, :, :]
-
-        # 添加小量噪声
-        if random.random() > 0.7:
-            noise = torch.randn_like(augmented_video) * 0.01
-            augmented_video = augmented_video + noise
-
-        return augmented_video
 
     def __getitem__(self, idx):
         patient_info = self.patients[idx]
@@ -61,11 +24,6 @@ class HMCDataset(BaseEchoDataset):
             a4c_path = Path(self.data_dir) / 'A4C' / f"{name}.pt"
             a2c_tensor = torch.load(a2c_path)  # [3,16,224,224]
             a4c_tensor = torch.load(a4c_path)  # [3,16,224,224]
-
-            # 应用数据增强
-            if self.transform is not None:
-                a2c_tensor = self.augment_video(a2c_tensor)
-                a4c_tensor = self.augment_video(a4c_tensor)
 
             label = int(patient_info["seg_Bi"])
             # 返回样本ID
@@ -135,8 +93,8 @@ class HMCMultiTaskDataset(BaseEchoDataset):
 
 # --- DataModule 部分保持不变 ---
 class HMCDataModule(BaseDataModule):
-    def __init__(self, data_dir, metadata_path, fold, view, batch_size, num_workers):
-        super().__init__(data_dir, metadata_path, fold, batch_size, num_workers)
+    def __init__(self, data_dir, metadata_path, fold, view, batch_size, num_workers, drop_last=False):
+        super().__init__(data_dir, metadata_path, fold, batch_size, num_workers, drop_last)
         self.view = view
 
     def setup(self, stage=None):

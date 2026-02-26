@@ -2,7 +2,7 @@ import torch
 import madgrad
 import torchmetrics
 import pytorch_lightning as pl
-
+from omegaconf import OmegaConf, DictConfig
 
 class BaseSystem(pl.LightningModule):
     """
@@ -10,22 +10,65 @@ class BaseSystem(pl.LightningModule):
     包含通用的验证逻辑和优化器配置.
     """
 
-    def __init__(self, learning_rate=1e-5, weight_decay=1e-2, **kwargs):
+    # def __init__(self, learning_rate=1e-5, weight_decay=1e-2, **kwargs):
+    #     super().__init__()
+    #     self.save_hyperparameters()
+    #     self.learning_rate = learning_rate
+    #     self.weight_decay = weight_decay
+    #     self.bce_loss = torch.nn.BCEWithLogitsLoss()
+    #
+    #     # Metrics
+    #     metrics = torchmetrics.MetricCollection({
+    #         'accuracy': torchmetrics.Accuracy(task="binary"),
+    #         'f1_score': torchmetrics.F1Score(task="binary"),
+    #         'specificity': torchmetrics.Specificity(task="binary"),
+    #         'precision': torchmetrics.Precision(task="binary"),
+    #         'recall': torchmetrics.Recall(task="binary"),
+    #         'auroc': torchmetrics.AUROC(task="binary")
+    #     })
+    #     self.val_metrics = metrics.clone(prefix='val_')
+    #     self.test_metrics = metrics.clone(prefix='test_')
+    def __init__(self, learning_rate=1e-5, weight_decay=1e-2, num_classes=2, **kwargs):
         super().__init__()
-        self.save_hyperparameters()
+
+        # 2. 将所有参数手动解析为标准的 Python 类型 (dict/list)
+        # resolve=True 会解析所有的引用（例如我们在 YAML 里加的时间戳 ${now:...}）
+        full_config = {
+            "learning_rate": learning_rate,
+            "weight_decay": weight_decay,
+            "num_classes": num_classes,
+            **kwargs
+        }
+
+        # 递归地将配置中的 DictConfig 转换为普通 dict
+        clean_hparams = OmegaConf.to_container(
+            OmegaConf.create(full_config),
+            resolve=True
+        )
+
+        # 3. 显式保存处理后的字典
+        self.save_hyperparameters(clean_hparams)
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
-        self.bce_loss = torch.nn.BCEWithLogitsLoss()
+        self.num_classes = num_classes  # 添加类别数属性
+
+        # 根据类别数确定任务类型
+        task_type = "binary" if num_classes == 2 else "multiclass"
 
         # Metrics
-        metrics = torchmetrics.MetricCollection({
-            'accuracy': torchmetrics.Accuracy(task="binary"),
-            'f1_score': torchmetrics.F1Score(task="binary"),
-            'specificity': torchmetrics.Specificity(task="binary"),
-            'precision': torchmetrics.Precision(task="binary"),
-            'recall': torchmetrics.Recall(task="binary"),
-            'auroc': torchmetrics.AUROC(task="binary")
-        })
+        metrics_config = {
+            'accuracy': torchmetrics.Accuracy(task=task_type, num_classes=num_classes if task_type == "multiclass" else None),
+            'f1_score': torchmetrics.F1Score(task=task_type, num_classes=num_classes if task_type == "multiclass" else None),
+            'precision': torchmetrics.Precision(task=task_type, num_classes=num_classes if task_type == "multiclass" else None),
+            'recall': torchmetrics.Recall(task=task_type, num_classes=num_classes if task_type == "multiclass" else None),
+            'auroc': torchmetrics.AUROC(task=task_type, num_classes=num_classes if task_type == "multiclass" else None)
+        }
+
+        # 二分类特有指标
+        if task_type == "binary":
+            metrics_config['specificity'] = torchmetrics.Specificity(task="binary")
+
+        metrics = torchmetrics.MetricCollection(metrics_config)
         self.val_metrics = metrics.clone(prefix='val_')
         self.test_metrics = metrics.clone(prefix='test_')
 
@@ -35,20 +78,6 @@ class BaseSystem(pl.LightningModule):
             lr=self.learning_rate
         )
 
-        # optimizer = torch.optim.AdamW(
-        #     filter(lambda p: p.requires_grad, self.parameters()),
-        #     lr=self.learning_rate,
-        #     weight_decay=self.weight_decay # 应用权重衰减
-        # )
-
-        # optimizer = torch.optim.RMSprop(
-        #     filter(lambda p: p.requires_grad, self.parameters()),
-        #     lr=self.learning_rate,
-        #     weight_decay=self.weight_decay,
-        #     alpha=0.99  # 平滑常数
-        # )
-
-
         # MultiStepLR
         # 默认
         scheduler = torch.optim.lr_scheduler.MultiStepLR(
@@ -57,36 +86,6 @@ class BaseSystem(pl.LightningModule):
             gamma=0.1
         )
 
-        # 定义LinearLR调度器，线性增加
-        # scheduler = LinearLR(
-        #     optimizer,
-        #     end_lr=1e-2,# 最终学习率
-        #     num_iter=60, # 总迭代次数
-        # )
-
-        # 定义ExponentialLR调度器
-        # scheduler = ExponentialLR(
-        #     optimizer,
-        #     end_lr=1e-2,  # 最终学习率
-        #     num_iter=60,  # 总迭代次数
-        # )
-
-        # 定义WarmupCosineSchedule调度器
-        # scheduler = WarmupCosineSchedule(
-        #     optimizer,
-        #     warmup_steps=5, # 线性warmup步骤
-        #     t_total=60,  # 总训练步骤
-        #     cycles=0.5,  # 余弦周期
-        # )
-
-        # 定义LinearWarmupCosineAnnealingLR调度器
-        # scheduler = LinearWarmupCosineAnnealingLR(
-        #     optimizer,
-        #     warmup_epochs=5,# 热身epoch数
-        #     max_epochs=60,  # 总训练epoch数
-        #     warmup_start_lr=1e-6,# 热身开始的学习率
-        #     eta_min=1e-6,  # 最小学习率
-        # )
         return [optimizer], [scheduler]
 
     def lr_scheduler_step(self, scheduler, optimizer, metric):

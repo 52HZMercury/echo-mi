@@ -1,0 +1,7 @@
+_target_: src.data.provincial_hospital_3.ProvincialHospitalhexaViewDataModule
+data_dir: "/workdir2/dataset/SYY-Echo/SYY-Echo/ProcessedNPY-16F/"
+metadata_path: "data/syy_433_Stratified_Multiclass.csv"
+fold: 4
+batch_size: 2
+num_workers: 2
+drop_last: True

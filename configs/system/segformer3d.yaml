@@ -1,0 +1,32 @@
+_target_: src.systems.segformer3d_system.SegFormer3DSystem
+
+# model_cfg 定义了整个 SegFormer3D 模型的参数
+model_cfg:
+  # 指向你的模型类路径
+  _target_: src.models.segformer3d.SegFormer3D
+
+  # 模型初始化参数 (__init__ args)
+  in_channels: 3
+
+  # 二分类设置为 2
+  num_classes: 1
+
+  # SegFormer 骨干网络参数 (MiT-B0 风格)
+  sr_ratios: [4, 2, 1, 1]
+  embed_dims: [32, 64, 160, 256]
+  patch_kernel_size: [7, 3, 3, 3]
+  patch_stride: [4, 2, 2, 2]
+  patch_padding: [3, 1, 1, 1]
+  mlp_ratios: [4, 4, 4, 4]
+  num_heads: [1, 2, 5, 8]
+  depths: [2, 2, 2, 2]
+
+  # 解码头参数
+  decoder_head_embedding_dim: 256
+  decoder_dropout: 0.1
+
+
+
+learning_rate: 1e-6
+loss_type: "bce"   # 可选: bce | focal | dice | bce_dice | tversky | asymmetric | asymmetric_bce | weighted_bce | iou | hinge
+bce_pos_weight: 1

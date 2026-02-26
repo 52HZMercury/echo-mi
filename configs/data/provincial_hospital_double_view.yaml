@@ -1,0 +1,6 @@
+_target_: src.data.provincial_hospital.ProvincialHospitalDoubleViewDataModule
+data_dir: "/workdir2/cn24/data/Provincial_Hospital_100_npy_16F/npy_data"
+metadata_path: "data/Provincial_Hospital_100.CSV"
+fold: 4
+batch_size: 16
+num_workers: 2

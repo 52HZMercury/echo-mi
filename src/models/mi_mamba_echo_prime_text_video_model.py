@@ -7,6 +7,7 @@ from monai.networks.blocks.dynunet_block import UnetOutBlock
 from monai.networks.blocks.unetr_block import UnetrBasicBlock, UnetrUpBlock
 from mamba_ssm import Mamba
 import torch.nn.functional as F
+from sympy import false
 
 # 确保 EchoPrimeTextEncoder 被导入
 from .components.echoprime_encoders import EchoPrimeVideoEncoder, EchoPrimeTextEncoder
@@ -193,14 +194,13 @@ class MambaEncoder(nn.Module):
         return x
 
 
-# 假设 ClsMLP 是一个三层 MLP
+#  ClsMLP 是一个三层 MLP
 class ClsMLP(nn.Module):
     def __init__(self, in_dim, out_dim):
         super().__init__()
         # 三层 MLP
         self.mlp = nn.Sequential(
             nn.Linear(in_dim, in_dim * 2),
-
             nn.BatchNorm1d(in_dim * 2),  # 添加BatchNorm
             nn.ReLU(),
             nn.Dropout(0.5),  # 添加Dropout
@@ -405,18 +405,22 @@ class MIMambaEchoPrimeTextVideo(nn.Module):
 
         # 4. 通道对齐层
         dec_feat_channel = self.feat_size[1] * (4 * 4 * 4)
+        # dec_feat_channel = self.feat_size[1] * (1 * 1 * 1)
+        # dec_feat_channel = 256
+        # dec_feat_channel = 768
 
         # 5. 分类 MLP (修改)
         # 输入维度:
         # 1. dec1_flat (2048)
         # 2. video_feat_a2c (512)
         self.classification_head = ClsMLP(
-            in_dim=dec_feat_channel + embed_dim,
+            # in_dim=dec_feat_channel + embed_dim,
+            in_dim=dec_feat_channel,
             out_dim=1
         )
 
     def forward(self, x_a2c: torch.Tensor, x_a4c: torch.Tensor, return_features: bool = False):
-        # --------------------- echo_prime 视频提取及知识激活路径 ---------------------
+        # --------------------- 知识激活路径 ---------------------
         bs = x_a2c.shape[0]  # 获取批次大小
 
         # 视频特征提取 - 用于知识激活
@@ -440,7 +444,6 @@ class MIMambaEchoPrimeTextVideo(nn.Module):
         # e. 池化知识，得到用于分类的 "知识向量"
         knowledge_vector = knowledge_sequence.mean(dim=1)  # [B, D]
 
-        a2c_fused_features = video_feat_a2c + knowledge_vector * 0.01
 
         # --------------------- Mamba 路径 (使用 x_a4c) ---------------------
         outs = self.mamba_encoder(x_a4c)  # Mamba Encoder features (x2, x3, x4, x_hidden)
@@ -453,13 +456,36 @@ class MIMambaEchoPrimeTextVideo(nn.Module):
         enc4 = self.encoder4(x4)  # (B, 128, D/8, H/8, W/8)
         enc_hidden = self.encoder5(outs[3])  # (B, 256, D/16, H/16, W/16)
 
-        # --- Decoder + 知识融合 ---
+        ## - -
+        # enc_hidden_pooled = F.adaptive_avg_pool3d(enc_hidden, (1, 1, 1))
+        # enc_hidden_flat = enc_hidden_pooled.view(enc_hidden.size(0), -1)
+
+
+        ## + -
+        # dec3 = self.decoder5(enc_hidden, enc4)  # (B, 128, D/8, H/8, W/8)
+        # dec3 = self.knowledge_fusions[0](dec3, knowledge_vector)
+        # dec2 = self.decoder4(dec3, enc3)  # (B, 64, D/4, H/4, W/4)
+        # dec2 = self.knowledge_fusions[1](dec2, knowledge_vector)
+        # dec1 = self.decoder3(dec2, enc2)  # (B, 32, D/2, H/2, W/2)
+        # dec1 = self.knowledge_fusions[2](dec1, knowledge_vector)
+        # # dec1: (B, 32, D/2, H/2, W/2) -> (B, 32*4*4*4) = (B, 2048)
+        # dec1_pooled = F.adaptive_avg_pool3d(dec1, (1, 1, 1))
+        # dec1_flat = dec1_pooled.view(dec1.size(0), -1)
+
+        ## - +
+        # enc_hidden_pooled = F.adaptive_avg_pool3d(enc_hidden, (1, 1, 1))
+        # enc_hidden_flat = enc_hidden_pooled.view(enc_hidden.size(0), -1)
+        # a2c_fused_features = video_feat_a2c
+        # # [B, 256] + [B, 512] -> [B, 768]
+        # fused_feat = torch.cat([enc_hidden_flat, a2c_fused_features], dim=1)
+
+
+        # + +
+        # ----------------------- 第一次校准 知识融合 ---------------------
         dec3 = self.decoder5(enc_hidden, enc4)  # (B, 128, D/8, H/8, W/8)
         dec3 = self.knowledge_fusions[0](dec3, knowledge_vector)
-
         dec2 = self.decoder4(dec3, enc3)  # (B, 64, D/4, H/4, W/4)
         dec2 = self.knowledge_fusions[1](dec2, knowledge_vector)
-
         dec1 = self.decoder3(dec2, enc2)  # (B, 32, D/2, H/2, W/2)
         dec1 = self.knowledge_fusions[2](dec1, knowledge_vector)
 
@@ -468,12 +494,14 @@ class MIMambaEchoPrimeTextVideo(nn.Module):
         dec1_pooled = F.adaptive_avg_pool3d(dec1, (4, 4, 4))
         dec1_flat = dec1_pooled.view(dec1.size(0), -1)
 
-        # --------------------- 融合与分类 ---------------------
-        # 1. 特征融合（通道拼接）
+        # ----------------------- 第二次校准 二切面信息补充 -----------------
+        a2c_fused_features = video_feat_a2c
         # [B, 2048] + [B, 512] -> [B, 3072]
         fused_feat = torch.cat([dec1_flat, a2c_fused_features], dim=1)
 
-        # 2. 送入 MLP 进行二分类
+
+        # --------------------- 分类 ---------------------
+        # 送入 MLP 进行二分类
         # cls_out: (B, 1)
         logits = self.classification_head(fused_feat)
 
@@ -482,3 +510,96 @@ class MIMambaEchoPrimeTextVideo(nn.Module):
             return logits, fused_feat
 
         return logits
+
+# 热力图
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+    from utils.camutils import GradCAM, show_cam_on_image
+
+    # 加载模型权重
+    # checkpoint_path = r'/workdir1/cn24/program/SimLVSeg/lightning_logs/version_302/checkpoints/epoch=30-step=18910.ckpt'
+    checkpoint_path = r'/workdir1/cn24/program/SimLVSeg/lightning_logs/version_253/checkpoints/epoch=42-step=157592.ckpt'
+    checkpoint = torch.load(checkpoint_path, map_location='cuda:0')
+
+    # 获取 state_dict
+    state_dict = checkpoint['state_dict']
+
+    # 移除 'model.' 前缀
+    new_state_dict = {}
+    for key in state_dict:
+        new_key = key.replace("model.", "")  # 移除 'model.' 前缀
+        new_state_dict[new_key] = state_dict[key]
+
+    # step2 初始化模型并加载权重
+    model = MIMambaEchoPrimeTextVideo(in_chans=3,
+                     out_chans=1,
+                     depths=[2, 2, 2, 2],
+                     feat_size=[16, 32, 64, 128])
+    model.load_state_dict(new_state_dict)
+    model.eval()
+    # 将模型加载到 GPU 0
+    model = model.cuda(0)
+
+
+    # step3 加载真实数据
+    import numpy as np
+    from utils.img2tensor import video_pad_to_tensor
+
+    # video_name = r'0X112EF236E1F676E4.avi'
+    # video_name = r'0X129133A90A61A59D.avi'
+    # video_name = r'0X10A28877E97DF540.avi'
+    # video_name = r'0X1C48B213563D806E.avi'
+    # video_name = r'0X1AB987597AF39E3B.avi'
+    video_name = r'0X3154AED0655FDFA.avi'
+    video_path = r'/workdir1/echo_dataset/EchoNet-Dynamic/Videos/' + video_name
+    # video_path = r'/workdir1/cn24/data/pediatric_echo/A4C/Videos/' + video_name
+    # save_name = "visualize_video/cam_out.png"
+    # save_name = "visualize_video/cam_decoder1.png"
+    save_name = "visualize_video/cam_decoder2.png"
+    ed_frame = 112
+
+    video_tensor = video_pad_to_tensor(video_path)
+    video_tensor = video_tensor[..., ed_frame - 1:]
+
+    # 获取视频的帧数
+    num_frames = video_tensor.shape[-1]
+
+    # 如果视频帧数小于 32，使用镜像复制的方式填充
+    if num_frames < 32:
+        # 使用最后一帧进行镜像复制填充
+        repeat_frames = 32 - num_frames
+        video_tensor = torch.cat([video_tensor, video_tensor[:, :, :, :, -1:].repeat(1, 1, 1, 1, repeat_frames)],dim=-1)
+    # 确保 input 取到前 16 帧
+    input = video_tensor[:, :, :, :, 0:32].cuda(0)
+
+    # 获取模型最后一层作为目标层
+    # target_layers = [model.out]
+    # target_layers = [model.decoder1]
+    target_layers = [model.decoder2]
+
+    # 创建 GradCAM 对象
+    cam = GradCAM(model=model, target_layers=target_layers, use_cuda=False)
+    # 指定目标类别
+    target_category = 0
+
+    grayscale_cam = cam(input_tensor=input, target_category=target_category)
+    print(f"grayscale_cam.shape: {grayscale_cam.shape}")
+    grayscale_cam = grayscale_cam[0, :]
+
+    # 可视化
+    video_array = video_tensor.detach().cpu().numpy().astype(np.float32) / 255.
+    # 1. 去掉 batch 维度 (0) 和 frame 维度 (-1)
+    video_squeezed = video_array[0, :, :, :, 0]  # 取第一个 batch 和第一个 frame
+    # 2. 将通道维度放到最后 -> [H, W, C]
+    video_final = np.transpose(video_squeezed, (1, 2, 0))
+    print(video_final.shape)
+    visualization = show_cam_on_image(video_final,
+                                      grayscale_cam,
+                                      use_rgb=True)
+    # 使用 matplotlib 保存图像
+    plt.imshow(visualization)
+    plt.axis('off')  # 可选：隐藏坐标轴
+    plt.savefig(save_name, bbox_inches='tight', pad_inches=0)
+    plt.close()
+
+    print("热力图已保存")
