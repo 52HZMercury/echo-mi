@@ -14,6 +14,8 @@ Example:
     prediction = model(video)
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Union
@@ -88,6 +90,8 @@ class ResidualMamba(nn.Module):
         d_conv: int,
         expand: int,
         drop_path: float,
+        bimamba_type: str,
+        nslices: int,
     ) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(embed_dim)
@@ -96,6 +100,8 @@ class ResidualMamba(nn.Module):
             d_state=d_state,
             d_conv=d_conv,
             expand=expand,
+            bimamba_type=bimamba_type,
+            nslices=nslices,
         )
         self.dropout = nn.Dropout(drop_path) if drop_path > 0 else nn.Identity()
 
@@ -112,11 +118,21 @@ class MambaStack(nn.Module):
         d_conv: int,
         expand: int,
         drop_path: float,
+        bimamba_type: str,
+        nslices: int,
     ) -> None:
         super().__init__()
         self.layers = nn.ModuleList(
             [
-                ResidualMamba(embed_dim, d_state, d_conv, expand, drop_path)
+                ResidualMamba(
+                    embed_dim,
+                    d_state,
+                    d_conv,
+                    expand,
+                    drop_path,
+                    bimamba_type,
+                    nslices,
+                )
                 for _ in range(depth)
             ]
         )
@@ -138,6 +154,8 @@ class Mamba3DBlock(nn.Module):
         d_conv: int,
         expand: int,
         drop_path: float,
+        bimamba_type: str,
+        nslices: int,
     ) -> None:
         super().__init__()
 
@@ -149,6 +167,8 @@ class Mamba3DBlock(nn.Module):
                 d_conv,
                 expand,
                 drop_path,
+                bimamba_type,
+                nslices,
             )
 
         self.hwl = make_stack()
@@ -202,6 +222,8 @@ class EViM3Config:
     d_conv: int = 4
     expand: int = 2
     drop_path: float = 0.0
+    bimamba_type: str = "v3"
+    nslices: int = 1
     final_aggregate_mode: str = "all_concat"
     final_dim: int = 512
     head_layers: int = 3
@@ -219,6 +241,7 @@ class EViM3Config:
             "d_state",
             "d_conv",
             "expand",
+            "nslices",
             "final_dim",
             "head_layers",
         )
@@ -232,6 +255,8 @@ class EViM3Config:
             raise ValueError("image_size must be divisible by patch_size")
         if min(self.l_reg_num, self.h_reg_num, self.w_reg_num) < 0:
             raise ValueError("register token counts cannot be negative")
+        if self.bimamba_type != "v3":
+            raise ValueError("this project requires bimamba_type='v3'")
         if self.final_aggregate_mode not in {
             "all_mean",
             "all_max",
@@ -294,6 +319,8 @@ class EViM3Backbone(nn.Module):
                     config.d_conv,
                     config.expand,
                     config.drop_path,
+                    config.bimamba_type,
+                    config.nslices,
                 )
                 for _ in range(config.macro_block_num)
             ]
@@ -335,7 +362,11 @@ class EViM3Backbone(nn.Module):
     def _add_enclosure_tokens(self, patches: torch.Tensor) -> torch.Tensor:
         batch, _, _, _, dim = patches.shape
         length, height, width = self.enclosed_grid_size
-        x = self.register_token.expand(batch, length, height, width, dim).clone()
+        x = (
+            self.register_token.to(device=patches.device, dtype=patches.dtype)
+            .expand(batch, length, height, width, dim)
+            .clone()
+        )
 
         x[:, :1, 1:-1, 1:-1] = self.face_tokens[0]
         x[:, -1:, 1:-1, 1:-1] = self.face_tokens[1]
@@ -474,7 +505,8 @@ class EViM3(nn.Module):
                 checkpoint = checkpoint[key]
                 break
         state_dict = {
-            key.removeprefix("module."): value for key, value in checkpoint.items()
+            (key[7:] if key.startswith("module.") else key): value
+            for key, value in checkpoint.items()
         }
         return self.load_state_dict(state_dict, strict=strict)
 

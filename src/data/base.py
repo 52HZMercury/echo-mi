@@ -4,6 +4,39 @@ from torch.utils.data import Dataset
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 
+SUPPORTED_NUM_FRAMES = (8, 16, 32)
+
+
+def resample_video_tensor(video_tensor, num_frames):
+    """Uniformly sample or cyclically pad a [C, T, H, W] video tensor."""
+    if num_frames not in SUPPORTED_NUM_FRAMES:
+        raise ValueError(
+            f"num_frames must be one of {SUPPORTED_NUM_FRAMES}, got {num_frames}"
+        )
+    if video_tensor.ndim != 4:
+        raise ValueError(
+            "video_tensor must have shape [C, T, H, W], "
+            f"got {tuple(video_tensor.shape)}"
+        )
+
+    source_frames = video_tensor.shape[1]
+    if source_frames <= 0:
+        raise ValueError("video_tensor must contain at least one frame")
+    if source_frames == num_frames:
+        return video_tensor
+
+    if source_frames < num_frames:
+        indices = torch.arange(num_frames, device=video_tensor.device) % source_frames
+    else:
+        indices = torch.linspace(
+            0,
+            source_frames - 1,
+            steps=num_frames,
+            device=video_tensor.device,
+        ).long()
+    return video_tensor.index_select(1, indices)
+
+
 class BaseEchoDataset(Dataset):
     """
     超声心动图数据集的基类.

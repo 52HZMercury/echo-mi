@@ -1,0 +1,12 @@
+_target_: src.models.BI_mamba_model.BIMamba
+in_chans: 3
+num_outputs: 1
+embed_dim: 192
+depth: 6
+patch_size: [2, 16, 16]
+d_state: 16
+d_conv: 4
+expand: 2
+bimamba_type: v3
+nslices: 8
+dropout_rate: 0.2

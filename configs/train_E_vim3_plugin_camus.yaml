@@ -1,0 +1,48 @@
+# @package _global_
+
+defaults:
+  - data: camus_double_view
+  - model: E_vim3_plugin
+  - system: E_vim3_plugin
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+  - _self_
+
+seed: 3407
+experiment_name: "Experiment_162"
+test_after_training: true
+
+
+hydra:
+  run:
+    dir: logs/${experiment_name}/Fold-${data.fold}
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 200
+  accelerator: gpu
+  devices: [1]
+  precision: 16
+  accumulate_grad_batches: 4
+  check_val_every_n_epoch: 1
+  deterministic: false
+
+logger:
+  _target_: pytorch_lightning.loggers.TensorBoardLogger
+  save_dir: "."
+  name: "logs"
+  version: "${experiment_name}/Fold-${data.fold}"
+
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    dirpath: "${hydra:run.dir}/checkpoints"
+    filename: "{epoch:02d}_{val_accuracy:.4f}"
+    monitor: val_accuracy
+    mode: max
+    save_top_k: 1
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: val_accuracy
+    patience: 30
+    mode: max

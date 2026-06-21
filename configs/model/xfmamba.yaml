@@ -1,0 +1,11 @@
+_target_: src.models.xf_mamba.XFMamba
+in_channels: 3
+num_classes: 1
+variant: tiny
+attention_downsampling: 4
+fusion_depth: 1
+fusion_drop_path_rate: 0.1
+attn_drop_rate: 0.0
+d_state: 16
+pretrained: null
+frame_chunk_size: 4

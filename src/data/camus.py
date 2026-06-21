@@ -1,6 +1,6 @@
 import random
 from pathlib import Path
-from .base import BaseEchoDataset, BaseDataModule
+from .base import BaseEchoDataset, BaseDataModule, resample_video_tensor
 import torch
 import torch.nn.functional as F
 import random
@@ -11,11 +11,11 @@ from .base import BaseEchoDataset
 class CAMUSDataset(BaseEchoDataset):
     """CAMUS 数据集（支持多种帧扩展策略）"""
 
-    def __init__(self, data_dir, metadata_path, split, fold, view):
+    def __init__(self, data_dir, metadata_path, split, fold, view, num_frames=16):
 
         super().__init__(data_dir, metadata_path, split, fold)
         self.view = view
-        self.target_frames = 16  # 可调整
+        self.num_frames = num_frames
 
     # --------------------------
     # 主函数：根据 view 加载数据
@@ -29,14 +29,15 @@ class CAMUSDataset(BaseEchoDataset):
             a4c_path = Path(self.data_dir) / 'A4C' / f"{name}.pt"
             a2c_tensor = torch.load(a2c_path)  # [3,16,224,224]
             a4c_tensor = torch.load(a4c_path)  # [3,16,224,224]
-
+            a2c_tensor = resample_video_tensor(a2c_tensor, self.num_frames)
+            a4c_tensor = resample_video_tensor(a4c_tensor, self.num_frames)
 
             label = int(patient_info["Both"])
             return a2c_tensor, a4c_tensor, label, name
         else:
             view_path = Path(self.data_dir) / self.view / f"{name}.pt"
             video_tensor = torch.load(view_path)
-            video_tensor = self._expand_temporal_dim(video_tensor)
+            video_tensor = resample_video_tensor(video_tensor, self.num_frames)
             label = int(patient_info[self.view])
             return video_tensor, label, name
 
@@ -71,18 +72,59 @@ class CAMUSMultiTaskDataset(BaseEchoDataset):
 
 
 class CAMUSDataModule(BaseDataModule):
-    def __init__(self, data_dir, metadata_path, fold, view, batch_size, num_workers, drop_last=False):
+    def __init__(
+        self,
+        data_dir,
+        metadata_path,
+        fold,
+        view,
+        batch_size,
+        num_workers,
+        num_frames=16,
+        drop_last=False,
+    ):
         super().__init__(data_dir, metadata_path, fold, batch_size, num_workers, drop_last)
         self.view = view
+        self.num_frames = num_frames
 
     def setup(self, stage=None):
-        self.train_dataset = CAMUSDataset(self.data_dir, self.metadata_path, "train", self.fold, self.view)
-        self.val_dataset = CAMUSDataset(self.data_dir, self.metadata_path, "test", self.fold, self.view)
+        self.train_dataset = CAMUSDataset(
+            self.data_dir,
+            self.metadata_path,
+            "train",
+            self.fold,
+            self.view,
+            self.num_frames,
+        )
+        self.val_dataset = CAMUSDataset(
+            self.data_dir,
+            self.metadata_path,
+            "test",
+            self.fold,
+            self.view,
+            self.num_frames,
+        )
         self.test_dataset = self.val_dataset
 
 class CAMUSDoubleViewDataModule(CAMUSDataModule):
-    def __init__(self, data_dir, metadata_path, fold, batch_size, num_workers):
-        super().__init__(data_dir, metadata_path, fold, "both", batch_size, num_workers)
+    def __init__(
+        self,
+        data_dir,
+        metadata_path,
+        fold,
+        batch_size,
+        num_workers,
+        num_frames=16,
+    ):
+        super().__init__(
+            data_dir,
+            metadata_path,
+            fold,
+            "both",
+            batch_size,
+            num_workers,
+            num_frames,
+        )
 
 
 class CAMUSMultiTaskDataModule(BaseDataModule):

@@ -1,0 +1,16 @@
+_target_: src.models.xf_mamba_plugin.XFMambaPlugin
+in_channels: 3
+num_classes: 1
+variant: tiny
+attention_downsampling: 4
+fusion_depth: 1
+fusion_drop_path_rate: 0.1
+attn_drop_rate: 0.0
+d_state: 16
+pretrained: null
+frame_chunk_size: 4
+enable_dk_ac: true
+video_encoder_path: "./model_weight/echo_prime_encoder.pt"
+text_encoder_path: "./model_weight/echo_prime_text_encoder.pt"
+frozen_video_encoder: true
+frozen_text_encoder: true

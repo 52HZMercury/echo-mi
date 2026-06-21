@@ -6,10 +6,7 @@ from typing import Optional, Union
 import torch
 import torch.nn as nn
 
-from .DK_AC_plugin import (
-    DualViewSupplementPlugin,
-    FeatureKnowledgeCalibrationPlugin,
-)
+from .DK_AC_plugin import DKACPlugin
 from .xf_mamba import VARIANT_CONFIGS, XFMamba
 
 
@@ -27,9 +24,13 @@ class XFMambaPlugin(XFMamba):
         attn_drop_rate: float = 0.0,
         d_state: int = 16,
         pretrained: Optional[Union[str, Path]] = None,
-        knowledge_dim: int | None = None,
-        knowledge_calibration_plugin: nn.Module | None = None,
-        dual_view_supplement_plugin: nn.Module | None = None,
+        frame_chunk_size: int = 4,
+        enable_dk_ac: bool = True,
+        video_encoder_path: Optional[str] = "./model_weight/echo_prime_encoder.pt",
+        text_encoder_path: Optional[str] = "./model_weight/echo_prime_text_encoder.pt",
+        frozen_video_encoder: bool = True,
+        frozen_text_encoder: bool = True,
+        dk_ac_plugin: Optional[nn.Module] = None,
     ) -> None:
         super().__init__(
             in_channels=in_channels,
@@ -41,26 +42,19 @@ class XFMambaPlugin(XFMamba):
             attn_drop_rate=attn_drop_rate,
             d_state=d_state,
             pretrained=pretrained,
+            frame_chunk_size=frame_chunk_size,
         )
         hidden_dim = int(VARIANT_CONFIGS[variant]["hidden_dim"])
-        self.knowledge_dim = knowledge_dim or hidden_dim
-        self.default_knowledge = nn.Parameter(torch.zeros(1, self.knowledge_dim))
         self.feature_pool = nn.AdaptiveAvgPool2d(1)
-
-        self.knowledge_calibration_plugin = knowledge_calibration_plugin or (
-            FeatureKnowledgeCalibrationPlugin(hidden_dim, self.knowledge_dim)
+        self.dk_ac_plugin = dk_ac_plugin or DKACPlugin(
+            main_feature_dim=hidden_dim,
+            enabled=enable_dk_ac,
+            video_encoder_path=video_encoder_path,
+            text_encoder_path=text_encoder_path,
+            frozen_video_encoder=frozen_video_encoder,
+            frozen_text_encoder=frozen_text_encoder,
         )
-        calibrated_dim = self._plugin_output_dim(
-            self.knowledge_calibration_plugin,
-            "knowledge_calibration_plugin",
-        )
-        self.dual_view_supplement_plugin = dual_view_supplement_plugin or (
-            DualViewSupplementPlugin(calibrated_dim, hidden_dim)
-        )
-        fused_dim = self._plugin_output_dim(
-            self.dual_view_supplement_plugin,
-            "dual_view_supplement_plugin",
-        )
+        fused_dim = self._plugin_output_dim(self.dk_ac_plugin, "dk_ac_plugin")
         self.classifier = nn.Linear(fused_dim, num_classes)
 
     @staticmethod
@@ -70,50 +64,23 @@ class XFMambaPlugin(XFMamba):
             raise ValueError(f"{name} must expose a positive integer output_dim")
         return output_dim
 
-    def _prepare_knowledge(
-        self,
-        knowledge_vector: torch.Tensor | None,
-        batch_size: int,
-    ) -> torch.Tensor:
-        if knowledge_vector is None:
-            return self.default_knowledge.expand(batch_size, -1)
-        if knowledge_vector.shape != (batch_size, self.knowledge_dim):
-            raise ValueError(
-                f"knowledge_vector must have shape "
-                f"[{batch_size}, {self.knowledge_dim}], "
-                f"got {tuple(knowledge_vector.shape)}"
-            )
-        return knowledge_vector
-
     def forward(
         self,
         view_a: torch.Tensor,
         view_b: torch.Tensor,
-        knowledge_vector: torch.Tensor | None = None,
         return_features: bool = False,
     ):
-        view_a = self._prepare_view(view_a, "view_a")
-        view_b = self._prepare_view(view_b, "view_b")
-
-        features_a = self.mamba_feature_extrac(view_a)[-1]
-        features_b = self.mamba_feature_extrac(view_b)[-1]
-        features_a, features_b = self.shallow_mamba_fusion(features_a, features_b)
-
-        fused_map = self.final_conv(self.fusemamba(features_a, features_b))
-        main_feature = self.feature_pool(fused_map).flatten(1)
-        view_a_feature = self.feature_pool(features_a).flatten(1)
-        knowledge_vector = self._prepare_knowledge(
-            knowledge_vector,
-            batch_size=main_feature.shape[0],
+        echo_view_a = view_a
+        echo_view_b = view_b
+        view_a, view_b, batch_size, frames = self._prepare_video_views(
+            view_a, view_b
         )
-
-        calibrated_feature = self.knowledge_calibration_plugin(
+        main_feature = self._forward_fused_feature(view_a, view_b)
+        main_feature = self._aggregate_frames(main_feature, batch_size, frames)
+        fused_feature = self.dk_ac_plugin(
             main_feature,
-            knowledge_vector,
-        )
-        fused_feature = self.dual_view_supplement_plugin(
-            calibrated_feature,
-            view_a_feature,
+            echo_view_a,
+            echo_view_b,
         )
         logits = self.classifier(fused_feature)
         if return_features:

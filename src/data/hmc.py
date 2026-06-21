@@ -2,7 +2,7 @@ import torch
 import random
 from pathlib import Path
 import os
-from .base import BaseEchoDataset, BaseDataModule
+from .base import BaseEchoDataset, BaseDataModule, resample_video_tensor
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import torchvision.transforms as transforms
@@ -10,10 +10,11 @@ import torchvision.transforms as transforms
 class HMCDataset(BaseEchoDataset):
     """HMC 数据集 (加载 .pt 文件)"""
 
-    def __init__(self, data_dir, metadata_path, split, fold, view):
+    def __init__(self, data_dir, metadata_path, split, fold, view, num_frames=16):
 
         super().__init__(data_dir, metadata_path, split, fold)
         self.view = view
+        self.num_frames = num_frames
 
     def __getitem__(self, idx):
         patient_info = self.patients[idx]
@@ -24,6 +25,8 @@ class HMCDataset(BaseEchoDataset):
             a4c_path = Path(self.data_dir) / 'A4C' / f"{name}.pt"
             a2c_tensor = torch.load(a2c_path)  # [3,16,224,224]
             a4c_tensor = torch.load(a4c_path)  # [3,16,224,224]
+            a2c_tensor = resample_video_tensor(a2c_tensor, self.num_frames)
+            a4c_tensor = resample_video_tensor(a4c_tensor, self.num_frames)
 
             label = int(patient_info["seg_Bi"])
             # 返回样本ID
@@ -31,6 +34,7 @@ class HMCDataset(BaseEchoDataset):
         else:
             view_path = Path(self.data_dir) / self.view / f"{name}.pt"
             video_tensor = torch.load(view_path)
+            video_tensor = resample_video_tensor(video_tensor, self.num_frames)
             label = int(patient_info[f"seg_{self.view}"])
             # 返回样本ID
             return video_tensor, label, name
@@ -93,26 +97,84 @@ class HMCMultiTaskDataset(BaseEchoDataset):
 
 # --- DataModule 部分保持不变 ---
 class HMCDataModule(BaseDataModule):
-    def __init__(self, data_dir, metadata_path, fold, view, batch_size, num_workers, drop_last=False):
+    def __init__(
+        self,
+        data_dir,
+        metadata_path,
+        fold,
+        view,
+        batch_size,
+        num_workers,
+        num_frames=16,
+        drop_last=False,
+    ):
         super().__init__(data_dir, metadata_path, fold, batch_size, num_workers, drop_last)
         self.view = view
+        self.num_frames = num_frames
 
     def setup(self, stage=None):
-        self.train_dataset = HMCDataset(self.data_dir, self.metadata_path, "train", self.fold, self.view)
-        self.val_dataset = HMCDataset(self.data_dir, self.metadata_path, "test", self.fold, self.view)
+        self.train_dataset = HMCDataset(
+            self.data_dir,
+            self.metadata_path,
+            "train",
+            self.fold,
+            self.view,
+            self.num_frames,
+        )
+        self.val_dataset = HMCDataset(
+            self.data_dir,
+            self.metadata_path,
+            "test",
+            self.fold,
+            self.view,
+            self.num_frames,
+        )
         self.test_dataset = self.val_dataset
 
 
 class HMCSingleViewDataModule(HMCDataModule):
-    def __init__(self, data_dir, metadata_path, fold, view, batch_size, num_workers):
+    def __init__(
+        self,
+        data_dir,
+        metadata_path,
+        fold,
+        view,
+        batch_size,
+        num_workers,
+        num_frames=16,
+    ):
         if view not in ['A2C', 'A4C']:
             raise ValueError("HMCSingleViewDataModule requires view to be 'A2C' or 'A4C'.")
-        super().__init__(data_dir, metadata_path, fold, view, batch_size, num_workers)
+        super().__init__(
+            data_dir,
+            metadata_path,
+            fold,
+            view,
+            batch_size,
+            num_workers,
+            num_frames,
+        )
 
 
 class HMCDoubleViewDataModule(HMCDataModule):
-    def __init__(self, data_dir, metadata_path, fold, batch_size, num_workers):
-        super().__init__(data_dir, metadata_path, fold, "both", batch_size, num_workers)
+    def __init__(
+        self,
+        data_dir,
+        metadata_path,
+        fold,
+        batch_size,
+        num_workers,
+        num_frames=16,
+    ):
+        super().__init__(
+            data_dir,
+            metadata_path,
+            fold,
+            "both",
+            batch_size,
+            num_workers,
+            num_frames,
+        )
 
 
 class HMCMultiTaskDataModule(BaseDataModule):

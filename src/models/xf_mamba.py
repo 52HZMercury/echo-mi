@@ -15,8 +15,9 @@ from typing import Dict, Optional, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from models.fusion_vmamba import (
+from .fusion_vmamba import (
     Backbone_VSSM,
     CSSFVSSLayer_v5,
     ShallowFusionBlock_v4,
@@ -74,6 +75,7 @@ class XFMamba(nn.Module):
         attn_drop_rate: float = 0.0,
         d_state: int = 16,
         pretrained: Optional[Union[str, Path]] = None,
+        frame_chunk_size: int = 4,
     ) -> None:
         super().__init__()
 
@@ -91,6 +93,7 @@ class XFMamba(nn.Module):
         self.in_channels = in_channels
         self.num_classes = num_classes
         self.variant = variant
+        self.frame_chunk_size = frame_chunk_size
 
         self.mamba_feature_extrac = Backbone_VSSM(
             depths=config["depths"],
@@ -119,7 +122,7 @@ class XFMamba(nn.Module):
             drop_path=drop_paths,
             attn_drop_rate=attn_drop_rate,
             d_state=d_state,
-            attention_downsampling=attention_downsampling,
+            downsampling=attention_downsampling,
         )
 
         self.final_conv = nn.Conv2d(hidden_dim, hidden_dim, kernel_size=1)
@@ -151,20 +154,96 @@ class XFMamba(nn.Module):
             "or three-channel images."
         )
 
-    def forward(self, view_a: torch.Tensor, view_b: torch.Tensor) -> torch.Tensor:
-        """Return classification logits for a pair of aligned image views."""
-        view_a = self._prepare_view(view_a, "view_a")
-        view_b = self._prepare_view(view_b, "view_b")
+    def _prepare_video_views(
+        self,
+        view_a: torch.Tensor,
+        view_b: torch.Tensor,
+    ):
+        if view_a.ndim != view_b.ndim:
+            raise ValueError("Both views must have the same number of dimensions")
+        if view_a.shape[0] != view_b.shape[0]:
+            raise ValueError("Both views must have the same batch size")
 
+        if view_a.ndim == 4:
+            batch_size, frames = view_a.shape[0], 1
+        elif view_a.ndim == 5:
+            batch_size, channels, frames, height, width = view_a.shape
+            if view_b.shape[2] != frames:
+                raise ValueError("Both video views must have the same frame count")
+            view_a = view_a.permute(0, 2, 1, 3, 4).reshape(
+                batch_size * frames, channels, height, width
+            )
+            view_b = view_b.permute(0, 2, 1, 3, 4).reshape(
+                batch_size * frames, view_b.shape[1], view_b.shape[3], view_b.shape[4]
+            )
+        else:
+            raise ValueError(
+                "Each view must be an image [B, C, H, W] or video "
+                f"[B, C, T, H, W], got {tuple(view_a.shape)}"
+            )
+
+        return (
+            self._prepare_view(view_a, "view_a"),
+            self._prepare_view(view_b, "view_b"),
+            batch_size,
+            frames,
+        )
+
+    def _forward_fused_map(
+        self,
+        view_a: torch.Tensor,
+        view_b: torch.Tensor,
+    ) -> torch.Tensor:
         features_a = self.mamba_feature_extrac(view_a)[-1]
         features_b = self.mamba_feature_extrac(view_b)[-1]
-
         features_a, features_b = self.shallow_mamba_fusion(
             features_a, features_b
         )
         fused = self.fusemamba(features_a, features_b)
-        fused = self.final_conv(fused)
-        return self.classifier(fused)
+        return self.final_conv(fused)
+
+    def _forward_fused_feature(
+        self,
+        view_a: torch.Tensor,
+        view_b: torch.Tensor,
+    ) -> torch.Tensor:
+        chunk_size = self.frame_chunk_size or view_a.shape[0]
+        if chunk_size < 1:
+            raise ValueError("frame_chunk_size must be positive or zero")
+
+        features = []
+        for start in range(0, view_a.shape[0], chunk_size):
+            fused_map = self._forward_fused_map(
+                view_a[start : start + chunk_size],
+                view_b[start : start + chunk_size],
+            )
+            features.append(F.adaptive_avg_pool2d(fused_map, 1).flatten(1))
+        return torch.cat(features, dim=0)
+
+    @staticmethod
+    def _aggregate_frames(
+        feature: torch.Tensor,
+        batch_size: int,
+        frames: int,
+    ) -> torch.Tensor:
+        return feature.reshape(batch_size, frames, -1).mean(dim=1)
+
+    def forward(
+        self,
+        view_a: torch.Tensor,
+        view_b: torch.Tensor,
+        return_features: bool = False,
+    ):
+        """Return classification logits for paired image or video views."""
+        view_a, view_b, batch_size, frames = self._prepare_video_views(
+            view_a, view_b
+        )
+        fused_feature = self._forward_fused_feature(view_a, view_b)
+        fused_feature = self._aggregate_frames(fused_feature, batch_size, frames)
+        logits = self.classifier.head(fused_feature)
+        if return_features:
+            return logits, fused_feature
+        return logits
 
     def load_model_checkpoint(
         self,

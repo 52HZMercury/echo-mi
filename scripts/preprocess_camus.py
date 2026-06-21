@@ -6,7 +6,7 @@ from pathlib import Path
 from tqdm import tqdm
 from src.data.utils import process_video_frames
 
-def preprocess_camus_dataset(source_dir, dest_dir, metadata_path):
+def preprocess_camus_dataset(source_dir, dest_dir, metadata_path, num_frames=16):
     """
     预处理CAMUS数据集，从AVI视频中提取帧并保存为.pt文件。
     """
@@ -26,7 +26,12 @@ def preprocess_camus_dataset(source_dir, dest_dir, metadata_path):
         if a2c_video_path.exists() and not a2c_pt_path.exists():
             try:
                 start, end = int(row["Start_A2C"]), int(row["End_A2C"])
-                tensor = process_video_frames(a2c_video_path, start, end)
+                tensor = process_video_frames(
+                    a2c_video_path,
+                    start,
+                    end,
+                    num_out_frames=num_frames,
+                )
                 torch.save(tensor, a2c_pt_path)
             except Exception as e:
                 print(f"Error processing {a2c_video_path}: {e}")
@@ -37,7 +42,12 @@ def preprocess_camus_dataset(source_dir, dest_dir, metadata_path):
         if a4c_video_path.exists() and not a4c_pt_path.exists():
             try:
                 start, end = int(row["Start_A4C"]), int(row["End_A4C"])
-                tensor = process_video_frames(a4c_video_path, start, end)
+                tensor = process_video_frames(
+                    a4c_video_path,
+                    start,
+                    end,
+                    num_out_frames=num_frames,
+                )
                 torch.save(tensor, a4c_pt_path)
             except Exception as e:
                 print(f"Error processing {a4c_video_path}: {e}")
@@ -48,7 +58,19 @@ if __name__ == "__main__":
     parser.add_argument('--source_dir', type=str, required=True, help='Directory containing the raw AVI videos.')
     parser.add_argument('--dest_dir', type=str, required=True, help='Directory to save the processed .pt files.')
     parser.add_argument('--metadata_path', type=str, default='data/label_select160.csv', help='Path to the metadata CSV file.')
+    parser.add_argument(
+        '--num_frames',
+        type=int,
+        choices=(8, 16, 32),
+        default=16,
+        help='Number of frames saved in each processed video tensor.',
+    )
 
     args = parser.parse_args()
 
-    preprocess_camus_dataset(args.source_dir, args.dest_dir, args.metadata_path)
+    preprocess_camus_dataset(
+        args.source_dir,
+        args.dest_dir,
+        args.metadata_path,
+        args.num_frames,
+    )

@@ -1,21 +1,30 @@
 from __future__ import annotations
 
-from typing import Mapping, Optional, Union
+from typing import Optional, Sequence
 
 import torch
 import torch.nn as nn
 
-from .E_vim3 import EViM3, EViM3Config, MLP
+from .BI_mamba_model import BIVideoMambaEncoder
 from .DK_AC_plugin import DKACPlugin
 
 
-class EViM3Plugin(nn.Module):
-    """Two-view E-ViM3 classifier with knowledge and view-supplement plugins."""
+class BIMambaPlugin(nn.Module):
+    """Two-view BiMamba classifier with the DK-AC calibration plugins."""
 
     def __init__(
         self,
-        config: Optional[EViM3Config] = None,
+        in_chans: int = 3,
         num_outputs: int = 1,
+        embed_dim: int = 192,
+        depth: int = 6,
+        patch_size: Sequence[int] = (2, 16, 16),
+        d_state: int = 16,
+        d_conv: int = 4,
+        expand: int = 2,
+        dropout_rate: float = 0.2,
+        bimamba_type: str = "v3",
+        nslices: int = 8,
         enable_dk_ac: bool = True,
         video_encoder_path: Optional[str] = "./model_weight/echo_prime_encoder.pt",
         text_encoder_path: Optional[str] = "./model_weight/echo_prime_text_encoder.pt",
@@ -24,10 +33,20 @@ class EViM3Plugin(nn.Module):
         dk_ac_plugin: Optional[nn.Module] = None,
     ) -> None:
         super().__init__()
-        self.config = config or EViM3Config()
-        self.config.validate()
-        self.view_encoder = EViM3(self.config, num_outputs=None)
-        base_feature_dim = self.config.final_dim * 2
+        self.embed_dim = embed_dim
+        self.video_encoder = BIVideoMambaEncoder(
+            in_chans=in_chans,
+            embed_dim=embed_dim,
+            depth=depth,
+            patch_size=patch_size,
+            d_state=d_state,
+            d_conv=d_conv,
+            expand=expand,
+            dropout_rate=dropout_rate,
+            bimamba_type=bimamba_type,
+            nslices=nslices,
+        )
+        base_feature_dim = embed_dim * 2
         self.dk_ac_plugin = dk_ac_plugin or DKACPlugin(
             main_feature_dim=base_feature_dim,
             enabled=enable_dk_ac,
@@ -37,10 +56,10 @@ class EViM3Plugin(nn.Module):
             frozen_text_encoder=frozen_text_encoder,
         )
         fused_dim = self._plugin_output_dim(self.dk_ac_plugin, "dk_ac_plugin")
-        self.classification_head = MLP(
-            fused_dim,
-            [self.config.final_dim] * (self.config.head_layers - 1)
-            + [num_outputs],
+        self.classification_head = nn.Sequential(
+            nn.LayerNorm(fused_dim),
+            nn.Dropout(dropout_rate),
+            nn.Linear(fused_dim, num_outputs),
         )
 
     @staticmethod
@@ -50,32 +69,14 @@ class EViM3Plugin(nn.Module):
             raise ValueError(f"{name} must expose a positive integer output_dim")
         return output_dim
 
-    def _encode_view(self, video: torch.Tensor) -> torch.Tensor:
-        if video.ndim == 6:
-            batch, clips, channels, frames, height, width = video.shape
-            video = video.reshape(batch * clips, channels, frames, height, width)
-        else:
-            batch = video.shape[0]
-            clips = 1
-
-        feature = self.view_encoder.forward_features(video)
-        return feature.reshape(batch, clips, -1).mean(dim=1)
-
     def forward(
         self,
-        x_a2c: Union[torch.Tensor, Mapping[str, torch.Tensor]],
-        x_a4c: Optional[torch.Tensor] = None,
+        x_a2c: torch.Tensor,
+        x_a4c: torch.Tensor,
         return_features: bool = False,
     ):
-        if isinstance(x_a2c, Mapping):
-            inputs = x_a2c
-            x_a2c = inputs["x_a2c"]
-            x_a4c = inputs["x_a4c"]
-        if x_a4c is None:
-            raise ValueError("x_a4c is required for two-view feature supplementation")
-
-        a2c_feature = self._encode_view(x_a2c)
-        a4c_feature = self._encode_view(x_a4c)
+        a2c_feature = self.video_encoder(x_a2c)
+        a4c_feature = self.video_encoder(x_a4c)
         base_feature = torch.cat([a4c_feature, a2c_feature], dim=1)
         fused_feature = self.dk_ac_plugin(
             base_feature,
@@ -88,7 +89,7 @@ class EViM3Plugin(nn.Module):
         return logits
 
 
-E_vim3_plugin = EViM3Plugin
+BI_mamba_plugin = BIMambaPlugin
 
 
-__all__ = ["EViM3Plugin", "E_vim3_plugin"]
+__all__ = ["BIMambaPlugin", "BI_mamba_plugin"]

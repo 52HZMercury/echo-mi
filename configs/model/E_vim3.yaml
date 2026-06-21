@@ -1,0 +1,29 @@
+_target_: src.models.E_vim3_plugin.EViM3Plugin
+config:
+  _target_: src.models.E_vim3.EViM3Config
+  in_channels: 3
+  video_length: ${data.num_frames}
+  image_size: 224
+  time_patch_size: 2
+  patch_size: 8
+  embed_dim: 192
+  l_reg_num: 1
+  h_reg_num: 1
+  w_reg_num: 1
+  n_mamba_per_block: 1
+  macro_block_num: 6
+  d_state: 16
+  d_conv: 4
+  expand: 2
+  drop_path: 0.0
+  bimamba_type: v3
+  nslices: 1
+  final_aggregate_mode: all_concat
+  final_dim: 512
+  head_layers: 3
+num_outputs: 1
+enable_dk_ac: false
+video_encoder_path: null
+text_encoder_path: null
+frozen_video_encoder: true
+frozen_text_encoder: true

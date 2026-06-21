@@ -1,0 +1,49 @@
+# @package _global_
+
+defaults:
+  - data: hmc_double_view
+  - model: xfmamba
+  - system: xfmamba
+  - override hydra/job_logging: default
+  - override hydra/hydra_logging: default
+  - _self_
+
+seed: 3407
+experiment_name: "XFMamba_HMC"
+test_after_training: true
+
+data:
+  batch_size: 2
+  num_workers: 4
+
+hydra:
+  run:
+    dir: logs/${experiment_name}/Fold-${data.fold}
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  max_epochs: 200
+  accelerator: gpu
+  devices: [0]
+  check_val_every_n_epoch: 1
+  deterministic: false
+
+logger:
+  _target_: pytorch_lightning.loggers.TensorBoardLogger
+  save_dir: "."
+  name: "logs"
+  version: "${experiment_name}/Fold-${data.fold}"
+
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    dirpath: "${hydra:run.dir}/checkpoints"
+    filename: "{epoch:02d}_{val_auroc:.4f}"
+    monitor: val_auroc
+    mode: max
+    save_top_k: 1
+  early_stopping:
+    _target_: pytorch_lightning.callbacks.EarlyStopping
+    monitor: val_auroc
+    patience: 30
+    mode: max
